@@ -22,25 +22,30 @@ function App() {
   const [mode, setMode] = useState<Mode>('venta')
   const [producto, setProducto] = useState('')
   const [cantidad, setCantidad] = useState<number>(1)
-  const [precio, setPrecio] = useState<number>(0)
+  const [precio, setPrecio] = useState<string>('')
   const [items, setItems] = useState<Item[]>([])
 
   const total = items.reduce((sum, item) => sum + item.cantidad * item.precio, 0)
 
   const handleAgregar = () => {
-    if (!producto.trim() || cantidad <= 0 || precio <= 0) return
+    const precioNum = Number(precio)
+    if (!producto.trim() || cantidad < 1 || !precio || precioNum <= 0) return
 
     const newItem: Item = {
       id: Date.now(),
       producto: producto.trim(),
       cantidad,
-      precio,
+      precio: precioNum,
     }
 
     setItems([...items, newItem])
     setProducto('')
     setCantidad(1)
-    setPrecio(0)
+    setPrecio('')
+  }
+
+  const handleEliminar = (id: number) => {
+    setItems(items.filter(item => item.id !== id))
   }
 
   const handleGuardar = () => {
@@ -57,117 +62,139 @@ function App() {
     setItems([])
   }
 
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleAgregar()
+    }
+  }
+
   return (
-    <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto', fontFamily: 'Arial, sans-serif' }}>
-      <h1 style={{ textAlign: 'center', marginBottom: '20px' }}>LionCore POS</h1>
+    <div className="min-h-screen bg-gray-100 py-8 px-4">
+      <div className="max-w-2xl mx-auto space-y-4">
+        <h1 className="text-3xl font-bold text-center text-gray-800">LionCore POS</h1>
 
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-        {(['venta', 'compra', 'gasto'] as Mode[]).map((m) => (
-          <button
-            key={m}
-            onClick={() => setMode(m)}
-            style={{
-              flex: 1,
-              padding: '10px',
-              textTransform: 'uppercase',
-              background: mode === m ? '#2563eb' : '#e5e7eb',
-              color: mode === m ? '#fff' : '#000',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-            }}
-          >
-            {m}
-          </button>
-        ))}
-      </div>
+        <div className="bg-white rounded-xl shadow-md p-4">
+          <div className="flex gap-2">
+            {(['venta', 'compra', 'gasto'] as Mode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={`flex-1 py-3 px-4 rounded-lg font-semibold uppercase text-sm transition-all duration-200 ${
+                  mode === m
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
 
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-        <input
-          type="text"
-          placeholder="Producto"
-          value={producto}
-          onChange={(e) => setProducto(e.target.value)}
-          style={{ flex: 2, padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
-        />
-        <input
-          type="number"
-          placeholder="Cantidad"
-          value={cantidad}
-          onChange={(e) => setCantidad(Number(e.target.value))}
-          min={1}
-          style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ccc', textAlign: 'center' }}
-        />
-        <input
-          type="number"
-          placeholder="Precio (COP)"
-          value={precio}
-          onChange={(e) => setPrecio(Number(e.target.value))}
-          min={0}
-          step={100}
-          style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ccc', textAlign: 'right' }}
-        />
+        <div className="bg-white rounded-xl shadow-md p-4">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Producto"
+              value={producto}
+              onChange={(e) => setProducto(e.target.value)}
+              onKeyPress={handleKeyPress}
+              className="flex-2 flex-1 py-3 px-4 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <input
+              type="number"
+              placeholder="Cant"
+              value={cantidad}
+              onChange={(e) => setCantidad(Math.max(1, Number(e.target.value)))}
+              min={1}
+              onKeyPress={handleKeyPress}
+              className="w-20 py-3 px-3 text-center border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <input
+              type="number"
+              placeholder="Precio"
+              value={precio}
+              onChange={(e) => setPrecio(e.target.value)}
+              onKeyPress={handleKeyPress}
+              min={0}
+              className="w-28 py-3 px-3 text-right border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <button
+              onClick={handleAgregar}
+              className="py-3 px-6 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors duration-200"
+            >
+              + Agregar
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-md overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr className="text-left text-sm text-gray-500 uppercase">
+                <th className="py-3 px-4">Producto</th>
+                <th className="py-3 px-2 text-center w-20">Cant.</th>
+                <th className="py-3 px-2 text-right w-28">Precio</th>
+                <th className="py-3 px-2 text-right w-32">Subtotal</th>
+                <th className="py-3 px-2 text-center w-12"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center text-gray-400">
+                    Sin productos agregados
+                  </td>
+                </tr>
+              ) : (
+                items.map((item, index) => (
+                  <tr
+                    key={item.id}
+                    className={`border-t border-gray-100 ${
+                      index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                    }`}
+                  >
+                    <td className="py-3 px-4 font-medium text-gray-800">{item.producto}</td>
+                    <td className="py-3 px-2 text-center text-gray-600">x{item.cantidad}</td>
+                    <td className="py-3 px-2 text-right text-gray-600">{formatCOP(item.precio)}</td>
+                    <td className="py-3 px-2 text-right font-semibold text-gray-800">
+                      {formatCOP(item.cantidad * item.precio)}
+                    </td>
+                    <td className="py-3 px-2 text-center">
+                      <button
+                        onClick={() => handleEliminar(item.id)}
+                        className="text-red-500 hover:text-red-700 transition-colors"
+                        title="Eliminar"
+                      >
+                        🗑
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-md p-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-semibold text-gray-700">Total</h2>
+            <h2 className="text-3xl font-bold text-blue-600">{formatCOP(total)}</h2>
+          </div>
+        </div>
+
         <button
-          onClick={handleAgregar}
-          style={{
-            padding: '10px 20px',
-            background: '#16a34a',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontWeight: 'bold',
-          }}
+          onClick={handleGuardar}
+          disabled={items.length === 0}
+          className={`w-full py-4 rounded-xl font-bold text-lg transition-colors duration-200 ${
+            items.length === 0
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
+          }`}
         >
-          Agregar
+          Guardar transacción
         </button>
       </div>
-
-      <div style={{ border: '1px solid #ccc', borderRadius: '8px', padding: '10px', marginBottom: '20px', minHeight: '150px' }}>
-        {items.length === 0 ? (
-          <p style={{ textAlign: 'center', color: '#666', margin: '50px 0' }}>Sin productos agregados</p>
-        ) : (
-          items.map((item) => (
-            <div
-              key={item.id}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                padding: '10px',
-                borderBottom: '1px solid #eee',
-              }}
-            >
-              <span>{item.producto}</span>
-              <span>x{item.cantidad}</span>
-              <span>{formatCOP(item.cantidad * item.precio)}</span>
-            </div>
-          ))
-        )}
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2>Total</h2>
-        <h2 style={{ fontSize: '2em', margin: 0 }}>{formatCOP(total)}</h2>
-      </div>
-
-      <button
-        onClick={handleGuardar}
-        disabled={items.length === 0}
-        style={{
-          width: '100%',
-          padding: '15px',
-          background: items.length === 0 ? '#ccc' : '#2563eb',
-          color: '#fff',
-          border: 'none',
-          borderRadius: '6px',
-          cursor: items.length === 0 ? 'not-allowed' : 'pointer',
-          fontSize: '1.2em',
-          fontWeight: 'bold',
-        }}
-      >
-        Guardar
-      </button>
     </div>
   )
 }
