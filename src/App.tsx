@@ -9,6 +9,15 @@ interface Item {
   precio: number
 }
 
+const formatCOP = (value: number): string => {
+  return new Intl.NumberFormat('es-CO', {
+    style: 'currency',
+    currency: 'COP',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
 function App() {
   const [mode, setMode] = useState<Mode>('venta')
   const [producto, setProducto] = useState('')
@@ -88,16 +97,16 @@ function App() {
           value={cantidad}
           onChange={(e) => setCantidad(Number(e.target.value))}
           min={1}
-          style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
+          style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ccc', textAlign: 'center' }}
         />
         <input
           type="number"
-          placeholder="Precio"
+          placeholder="Precio (COP)"
           value={precio}
           onChange={(e) => setPrecio(Number(e.target.value))}
           min={0}
-          step={0.01}
-          style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
+          step={100}
+          style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ccc', textAlign: 'right' }}
         />
         <button
           onClick={handleAgregar}
@@ -131,7 +140,7 @@ function App() {
             >
               <span>{item.producto}</span>
               <span>x{item.cantidad}</span>
-              <span>${(item.cantidad * item.precio).toFixed(2)}</span>
+              <span>{formatCOP(item.cantidad * item.precio)}</span>
             </div>
           ))
         )}
@@ -139,7 +148,7 @@ function App() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2>Total</h2>
-        <h2 style={{ fontSize: '2em', margin: 0 }}>${total.toFixed(2)}</h2>
+        <h2 style={{ fontSize: '2em', margin: 0 }}>{formatCOP(total)}</h2>
       </div>
 
       <button
