@@ -143,13 +143,29 @@ export async function createTransaction(
 export async function getTransactions(
   type?: 'venta' | 'compra' | 'gasto'
 ): Promise<Transaction[]> {
-  const query = db.transactions.where('businessId').equals(getCurrentBusinessId())
+  const businessId = getCurrentBusinessId()
+  
+  let results: Transaction[] = await db.transactions
+    .where('businessId')
+    .equals(businessId)
+    .toArray()
   
   if (type) {
-    return query.filter(t => t.type === type).toArray()
+    results = results.filter(t => t.type === type)
   }
   
-  return query.toArray()
+  return results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+}
+
+export async function getAllTransactions(): Promise<Transaction[]> {
+  const businessId = getCurrentBusinessId()
+  
+  const results = await db.transactions
+    .where('businessId')
+    .equals(businessId)
+    .toArray()
+  
+  return results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 }
 
 export async function getTransactionItems(transactionId: number): Promise<TransactionItem[]> {
