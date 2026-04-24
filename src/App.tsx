@@ -127,6 +127,13 @@ function App() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const [showSummary, setShowSummary] = useState(false)
+  const [showProductionDetails, setShowProductionDetails] = useState(false)
+  const [productionMeta, setProductionMeta] = useState({
+    pesoEntrada: '',
+    pesoSalida: '',
+    desperdicio: '',
+    tiempo: '',
+  })
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [summaryPeriod, setSummaryPeriod] = useState<'diario' | 'semanal' | 'mensual'>('diario')
@@ -270,7 +277,7 @@ function App() {
     setLoading(true)
 
     try {
-      const { getOrCreateDefaultBusiness, createTransaction } = await import('./services/db')
+      const { getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta } = await import('./services/db')
 
       await getOrCreateDefaultBusiness()
 
@@ -279,11 +286,25 @@ function App() {
         quantity: item.cantidad,
         price: item.precio,
         subtotal: item.cantidad * item.precio,
+        costUnitario: mode === 'produccion' ? item.precio / item.cantidad : undefined,
       }))
 
-      await createTransaction(mode, transactionItems)
+      const transactionId = await createTransaction(mode, transactionItems)
+
+      if (mode === 'produccion') {
+        const meta: Record<string, string | number> = {}
+        if (productionMeta.pesoEntrada) meta.peso_entrada = Number(productionMeta.pesoEntrada)
+        if (productionMeta.pesoSalida) meta.peso_salida = Number(productionMeta.pesoSalida)
+        if (productionMeta.desperdicio) meta.desperdicio = Number(productionMeta.desperdicio)
+        if (productionMeta.tiempo) meta.tiempo = Number(productionMeta.tiempo)
+        
+        if (Object.keys(meta).length > 0) {
+          await saveTransactionMeta(transactionId, meta)
+        }
+      }
 
       setItems([])
+      setProductionMeta({ pesoEntrada: '', pesoSalida: '', desperdicio: '', tiempo: '' })
       showNotification('success', 'Transacción guardada correctamente')
 
       if (showHistory) {
@@ -479,6 +500,62 @@ function App() {
                   )}
                 </div>
               </div>
+
+              {mode === 'produccion' && (
+                <div className="bg-white rounded-xl shadow-md p-4">
+                  <button
+                    onClick={() => setShowProductionDetails(!showProductionDetails)}
+                    className="text-blue-600 font-semibold text-sm flex items-center gap-2"
+                  >
+                    {showProductionDetails ? '▼ Ocultar detalles' : '+ Ver más detalles'}
+                  </button>
+
+                  {showProductionDetails && (
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Peso entrada (kg)</label>
+                        <input
+                          type="number"
+                          placeholder="0"
+                          value={productionMeta.pesoEntrada}
+                          onChange={(e) => setProductionMeta({ ...productionMeta, pesoEntrada: e.target.value })}
+                          className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Peso salida (kg)</label>
+                        <input
+                          type="number"
+                          placeholder="0"
+                          value={productionMeta.pesoSalida}
+                          onChange={(e) => setProductionMeta({ ...productionMeta, pesoSalida: e.target.value })}
+                          className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Desperdicio (kg)</label>
+                        <input
+                          type="number"
+                          placeholder="0"
+                          value={productionMeta.desperdicio}
+                          onChange={(e) => setProductionMeta({ ...productionMeta, desperdicio: e.target.value })}
+                          className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Tiempo (min)</label>
+                        <input
+                          type="number"
+                          placeholder="0"
+                          value={productionMeta.tiempo}
+                          onChange={(e) => setProductionMeta({ ...productionMeta, tiempo: e.target.value })}
+                          className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="bg-white rounded-xl shadow-md overflow-hidden">
                 <table className="w-full">
