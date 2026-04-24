@@ -21,7 +21,7 @@ export interface Product {
 export interface Transaction {
   id?: number
   businessId: number
-  type: 'venta' | 'compra' | 'gasto' | 'produccion'
+  type: 'venta' | 'compra' | 'gasto' | 'produccion' | 'config'
   total: number
   date: Date
 }
@@ -369,4 +369,89 @@ export async function getTransactionMeta(transactionId: number): Promise<Record<
   }
   
   return meta
+}
+
+export interface BusinessConfig {
+  costoManoObra?: number
+  costoEnergia?: number
+  costoEmpaque?: number
+  costoTransporte?: number
+  porcentajeGanancia?: number
+}
+
+export async function saveBusinessConfig(config: BusinessConfig): Promise<number> {
+  const businessId = getCurrentBusinessId()
+  
+  const transactionId = await db.transactions.add({
+    businessId,
+    type: 'config',
+    total: 0,
+    date: new Date(),
+  })
+  
+  const meta: Record<string, string | number> = {}
+  if (config.costoManoObra !== undefined) meta.costo_mano_obra = config.costoManoObra
+  if (config.costoEnergia !== undefined) meta.costo_energia = config.costoEnergia
+  if (config.costoEmpaque !== undefined) meta.costo_empaque = config.costoEmpaque
+  if (config.costoTransporte !== undefined) meta.costo_transporte = config.costoTransporte
+  if (config.porcentajeGanancia !== undefined) meta.porcentaje_ganancia = config.porcentajeGanancia
+  
+  await saveTransactionMeta(transactionId, meta)
+  
+  return transactionId
+}
+
+export async function getLatestBusinessConfig(): Promise<BusinessConfig> {
+  const businessId = getCurrentBusinessId()
+  
+  const configTx = await db.transactions
+    .where('businessId')
+    .equals(businessId)
+    .filter(t => t.type === 'config')
+    .toArray()
+  
+  if (configTx.length === 0) {
+    return {}
+  }
+  
+  const latestTx = configTx.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+  
+  const meta = await getTransactionMeta(latestTx.id!)
+  
+  return {
+    costoManoObra: meta.costo_mano_obra ? Number(meta.costo_mano_obra) : undefined,
+    costoEnergia: meta.costo_energia ? Number(meta.costo_energia) : undefined,
+    costoEmpaque: meta.costo_empaque ? Number(meta.costo_empaque) : undefined,
+    costoTransporte: meta.costo_transporte ? Number(meta.costo_transporte) : undefined,
+    porcentajeGanancia: meta.porcentaje_ganancia ? Number(meta.porcentaje_ganancia) : undefined,
+  }
+}
+
+export function calculateProductionCost(
+  costoMateriales: number,
+  config?: BusinessConfig
+): { costoTotal: number; precioVenta: number; details: Record<string, number> } {
+  const costoManoObra = config?.costoManoObra || 0
+  const costoEnergia = config?.costoEnergia || 0
+  const costoEmpaque = config?.costoEmpaque || 0
+  const costoTransporte = config?.costoTransporte || 0
+  const porcentajeGanancia = config?.porcentajeGanancia || 30
+  
+  const costoFijo = costoManoObra + costoEnergia + costoEmpaque + costoTransporte
+  const costoTotal = costoMateriales + costoFijo
+  const precioVenta = costoTotal * (1 + porcentajeGanancia / 100)
+  
+  return {
+    costoTotal,
+    precioVenta: Math.round(precioVenta),
+    details: {
+      materiales: costoMateriales,
+      manoObra: costoManoObra,
+      energia: costoEnergia,
+      empaque: costoEmpaque,
+      transporte: costoTransporte,
+      fijo: costoFijo,
+      ganancia: precioVenta - costoTotal,
+    }
+  }
 }

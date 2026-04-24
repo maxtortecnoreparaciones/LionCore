@@ -143,6 +143,15 @@ function App() {
   const [summaryPeriod, setSummaryPeriod] = useState<'diario' | 'semanal' | 'mensual'>('diario')
   const [summary, setSummary] = useState<FinancialSummary | null>(null)
   const [loadingSummary, setLoadingSummary] = useState(false)
+  const [showConfig, setShowConfig] = useState(false)
+  const [businessConfig, setBusinessConfig] = useState({
+    costoManoObra: '',
+    costoEnergia: '',
+    costoEmpaque: '',
+    costoTransporte: '',
+    porcentajeGanancia: '30',
+  })
+  const [configSaved, setConfigSaved] = useState(false)
 
   const total = items.reduce((sum, item) => sum + item.cantidad * item.precio, 0)
 
@@ -382,6 +391,14 @@ function App() {
             <h1 className="text-3xl font-bold text-gray-800">LionCore POS</h1>
             <div className="flex gap-2">
               <button
+                onClick={() => { setShowConfig(!showConfig); setShowSummary(false); setShowHistory(false); }}
+                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                  showConfig ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
+                }`}
+              >
+                {showConfig ? '← Volver' : '⚙️ Config'}
+              </button>
+              <button
                 onClick={handleToggleSummary}
                 className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
                   showSummary ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
@@ -399,6 +416,88 @@ function App() {
               </button>
             </div>
           </div>
+
+          {showConfig && (
+            <div className="bg-white rounded-xl shadow-md p-4">
+              <h2 className="text-xl font-bold text-gray-800 mb-4">Configuración de Costos</h2>
+              <p className="text-sm text-gray-500 mb-4">Configura los costos fijos para calcular el precio de venta en producción.</p>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Costo mano obra (por unidad)</label>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={businessConfig.costoManoObra}
+                    onChange={(e) => { setBusinessConfig({ ...businessConfig, costoManoObra: e.target.value }); setConfigSaved(false); }}
+                    className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Costo energía</label>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={businessConfig.costoEnergia}
+                    onChange={(e) => { setBusinessConfig({ ...businessConfig, costoEnergia: e.target.value }); setConfigSaved(false); }}
+                    className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Costo empaque</label>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={businessConfig.costoEmpaque}
+                    onChange={(e) => { setBusinessConfig({ ...businessConfig, costoEmpaque: e.target.value }); setConfigSaved(false); }}
+                    className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Costo transporte</label>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={businessConfig.costoTransporte}
+                    onChange={(e) => { setBusinessConfig({ ...businessConfig, costoTransporte: e.target.value }); setConfigSaved(false); }}
+                    className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-500 mb-1">% Ganancia</label>
+                  <input
+                    type="number"
+                    placeholder="30"
+                    value={businessConfig.porcentajeGanancia}
+                    onChange={(e) => { setBusinessConfig({ ...businessConfig, porcentajeGanancia: e.target.value }); setConfigSaved(false); }}
+                    className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={async () => {
+                  try {
+                    const { saveBusinessConfig } = await import('./services/db')
+                    await saveBusinessConfig({
+                      costoManoObra: Number(businessConfig.costoManoObra) || 0,
+                      costoEnergia: Number(businessConfig.costoEnergia) || 0,
+                      costoEmpaque: Number(businessConfig.costoEmpaque) || 0,
+                      costoTransporte: Number(businessConfig.costoTransporte) || 0,
+                      porcentajeGanancia: Number(businessConfig.porcentajeGanancia) || 30,
+                    })
+                    setConfigSaved(true)
+                    showNotification('success', 'Configuración guardada')
+                  } catch (error) {
+                    showNotification('error', 'Error al guardar')
+                  }
+                }}
+                className="mt-4 w-full py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+              >
+                {configSaved ? '✓ Guardado' : 'Guardar Configuración'}
+              </button>
+            </div>
+          )}
 
           {showSummary && (
             <div className="bg-white rounded-xl shadow-md p-4">
@@ -522,6 +621,16 @@ function App() {
                   )}
                 </div>
               </div>
+
+              {mode === 'produccion' && items.length > 0 && (
+                <div className="bg-purple-50 rounded-xl shadow-md p-4">
+                  <h3 className="text-purple-700 font-semibold mb-2">💡 Costo Calculado</h3>
+                  <div className="text-sm text-purple-600 space-y-1">
+                    <p>Materiales: {formatCOP(total)}</p>
+                    <p className="text-xs text-purple-500">El precio de venta se calculará con los costos configurados</p>
+                  </div>
+                </div>
+              )}
 
               {mode === 'produccion' && (
                 <div className="bg-white rounded-xl shadow-md p-4">
