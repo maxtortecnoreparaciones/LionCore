@@ -3,3 +3,6 @@ dist
 .vite
 *.log
 .DS_Store
+start.bat
+start.ps1
+start-server.bat
