@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary } from './services/db'
+import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta } from './services/db'
 
 type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
 
@@ -8,6 +8,10 @@ interface Item {
   producto: string
   cantidad: number
   precio: number
+}
+
+interface TransactionWithMeta extends Transaction {
+  meta?: Record<string, string>
 }
 
 const formatCOP = (value: number): string => {
@@ -134,7 +138,7 @@ function App() {
     desperdicio: '',
     tiempo: '',
   })
-  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [summaryPeriod, setSummaryPeriod] = useState<'diario' | 'semanal' | 'mensual'>('diario')
   const [summary, setSummary] = useState<FinancialSummary | null>(null)
@@ -151,7 +155,13 @@ function App() {
     setLoadingHistory(true)
     try {
       const data = await getAllTransactions()
-      setTransactions(data)
+      const transactionsWithMeta = await Promise.all(
+        data.map(async (tx) => {
+          const meta = await getTransactionMeta(tx.id!)
+          return { ...tx, meta }
+        })
+      )
+      setTransactions(transactionsWithMeta)
     } catch (error) {
       console.error('Error cargando transacciones:', error)
     } finally {
@@ -685,6 +695,14 @@ function App() {
                           {tx.type.toUpperCase()}
                         </span>
                         <p className="text-sm text-gray-500 mt-1">{formatDate(tx.date)}</p>
+                        {tx.type === 'produccion' && tx.meta && (
+                          <div className="mt-2 text-xs text-gray-400 space-y-1">
+                            {tx.meta.peso_entrada && <p>Peso entrada: {tx.meta.peso_entrada}kg</p>}
+                            {tx.meta.peso_salida && <p>Peso salida: {tx.meta.peso_salida}kg</p>}
+                            {tx.meta.desperdicio && <p>Desperdicio: {tx.meta.desperdicio}kg</p>}
+                            {tx.meta.tiempo && <p>Tiempo: {tx.meta.tiempo} min</p>}
+                          </div>
+                        )}
                       </div>
                       <div className="text-right">
                         <p className="text-xl font-bold text-gray-800">{formatCOP(tx.total)}</p>
