@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getAllTransactions, Transaction } from './services/db'
+import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary } from './services/db'
 
 type Mode = 'venta' | 'compra' | 'gasto'
 
@@ -124,8 +124,12 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [showHistory, setShowHistory] = useState(false)
+  const [showSummary, setShowSummary] = useState(false)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [summaryPeriod, setSummaryPeriod] = useState<'diario' | 'semanal' | 'mensual'>('diario')
+  const [summary, setSummary] = useState<FinancialSummary | null>(null)
+  const [loadingSummary, setLoadingSummary] = useState(false)
 
   const total = items.reduce((sum, item) => sum + item.cantidad * item.precio, 0)
 
@@ -151,6 +155,43 @@ function App() {
       await loadTransactions()
     }
     setShowHistory(!showHistory)
+    if (showSummary) setShowSummary(false)
+  }
+
+  const loadSummary = async (period: 'diario' | 'semanal' | 'mensual') => {
+    setLoadingSummary(true)
+    try {
+      let data: FinancialSummary
+      switch (period) {
+        case 'diario':
+          data = await getDailySummary()
+          break
+        case 'semanal':
+          data = await getWeeklySummary()
+          break
+        case 'mensual':
+          data = await getMonthlySummary()
+          break
+      }
+      setSummary(data)
+    } catch (error) {
+      console.error('Error cargando resumen:', error)
+    } finally {
+      setLoadingSummary(false)
+    }
+  }
+
+  const handleToggleSummary = async () => {
+    if (!showSummary) {
+      await loadSummary(summaryPeriod)
+    }
+    setShowSummary(!showSummary)
+    if (showHistory) setShowHistory(false)
+  }
+
+  const handlePeriodChange = async (period: 'diario' | 'semanal' | 'mensual') => {
+    setSummaryPeriod(period)
+    await loadSummary(period)
   }
 
   const handleAgregar = () => {
@@ -246,6 +287,9 @@ function App() {
       if (showHistory) {
         await loadTransactions()
       }
+      if (showSummary) {
+        await loadSummary(summaryPeriod)
+      }
     } catch (error) {
       console.error('Error al guardar:', error)
       showNotification('error', 'Error al guardar la transacción')
@@ -291,15 +335,73 @@ function App() {
         <div className="max-w-2xl mx-auto space-y-4">
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-gray-800">LionCore POS</h1>
-            <button
-              onClick={handleToggleHistory}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg font-semibold hover:bg-gray-700 transition-colors"
-            >
-              {showHistory ? '← Volver' : '📋 Historial'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handleToggleSummary}
+                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                  showSummary ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
+                }`}
+              >
+                {showSummary ? '← Volver' : '📊 Resumen'}
+              </button>
+              <button
+                onClick={handleToggleHistory}
+                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                  showHistory ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
+                }`}
+              >
+                {showHistory ? '← Volver' : '📋 Historial'}
+              </button>
+            </div>
           </div>
 
-          {!showHistory && (
+          {showSummary && (
+            <div className="bg-white rounded-xl shadow-md p-4">
+              <div className="flex gap-2 mb-4">
+                {(['diario', 'semanal', 'mensual'] as const).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => handlePeriodChange(p)}
+                    className={`flex-1 py-2 px-4 rounded-lg font-semibold uppercase text-sm transition-all ${
+                      summaryPeriod === p
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+
+              {loadingSummary ? (
+                <div className="p-8 text-center text-gray-500">Cargando...</div>
+              ) : summary ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="bg-green-50 rounded-lg p-4 text-center">
+                      <p className="text-sm text-green-600 font-semibold">Entradas</p>
+                      <p className="text-xl font-bold text-green-700">{formatCOP(summary.entradas)}</p>
+                    </div>
+                    <div className="bg-red-50 rounded-lg p-4 text-center">
+                      <p className="text-sm text-red-600 font-semibold">Salidas</p>
+                      <p className="text-xl font-bold text-red-700">{formatCOP(summary.salidas)}</p>
+                    </div>
+                    <div className={`rounded-lg p-4 text-center ${summary.balance >= 0 ? 'bg-blue-50' : 'bg-orange-50'}`}>
+                      <p className={`text-sm font-semibold ${summary.balance >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>Balance</p>
+                      <p className={`text-xl font-bold ${summary.balance >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>
+                        {formatCOP(summary.balance)}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-center text-sm text-gray-500">{summary.transacciones} transacciones</p>
+                </div>
+              ) : (
+                <div className="p-8 text-center text-gray-400">Sin datos</div>
+              )}
+            </div>
+          )}
+
+          {!showHistory && !showSummary && (
             <>
               <p className="text-center text-sm text-gray-500">Negocio ID: 1</p>
 

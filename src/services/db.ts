@@ -198,3 +198,83 @@ export async function getTotalSales(startDate?: Date, endDate?: Date): Promise<n
     .toArray()
     .then(tx => tx.reduce((sum, t) => sum + t.total, 0))
 }
+
+export interface FinancialSummary {
+  entradas: number
+  salidas: number
+  balance: number
+  transacciones: number
+}
+
+export async function getDailySummary(date: Date = new Date()): Promise<FinancialSummary> {
+  const startOfDay = new Date(date)
+  startOfDay.setHours(0, 0, 0, 0)
+  
+  const endOfDay = new Date(date)
+  endOfDay.setHours(23, 59, 59, 999)
+  
+  const transactions = await db.transactions
+    .where('businessId')
+    .equals(getCurrentBusinessId())
+    .filter(t => t.date >= startOfDay && t.date <= endOfDay)
+    .toArray()
+  
+  const entradas = transactions.filter(t => t.type === 'venta').reduce((sum, t) => sum + t.total, 0)
+  const salidas = transactions.filter(t => t.type === 'compra' || t.type === 'gasto').reduce((sum, t) => sum + t.total, 0)
+  
+  return {
+    entradas,
+    salidas,
+    balance: entradas - salidas,
+    transacciones: transactions.length,
+  }
+}
+
+export async function getWeeklySummary(): Promise<FinancialSummary> {
+  const now = new Date()
+  const startOfWeek = new Date(now)
+  startOfWeek.setDate(now.getDate() - now.getDay())
+  startOfWeek.setHours(0, 0, 0, 0)
+  
+  const endOfWeek = new Date(startOfWeek)
+  endOfWeek.setDate(startOfWeek.getDate() + 6)
+  endOfWeek.setHours(23, 59, 59, 999)
+  
+  const transactions = await db.transactions
+    .where('businessId')
+    .equals(getCurrentBusinessId())
+    .filter(t => t.date >= startOfWeek && t.date <= endOfWeek)
+    .toArray()
+  
+  const entradas = transactions.filter(t => t.type === 'venta').reduce((sum, t) => sum + t.total, 0)
+  const salidas = transactions.filter(t => t.type === 'compra' || t.type === 'gasto').reduce((sum, t) => sum + t.total, 0)
+  
+  return {
+    entradas,
+    salidas,
+    balance: entradas - salidas,
+    transacciones: transactions.length,
+  }
+}
+
+export async function getMonthlySummary(): Promise<FinancialSummary> {
+  const now = new Date()
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+  
+  const transactions = await db.transactions
+    .where('businessId')
+    .equals(getCurrentBusinessId())
+    .filter(t => t.date >= startOfMonth && t.date <= endOfMonth)
+    .toArray()
+  
+  const entradas = transactions.filter(t => t.type === 'venta').reduce((sum, t) => sum + t.total, 0)
+  const salidas = transactions.filter(t => t.type === 'compra' || t.type === 'gasto').reduce((sum, t) => sum + t.total, 0)
+  
+  return {
+    entradas,
+    salidas,
+    balance: entradas - salidas,
+    transacciones: transactions.length,
+  }
+}
