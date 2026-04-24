@@ -144,6 +144,8 @@ function App() {
   const [summary, setSummary] = useState<FinancialSummary | null>(null)
   const [loadingSummary, setLoadingSummary] = useState(false)
   const [showConfig, setShowConfig] = useState(false)
+  const [showInventory, setShowInventory] = useState(false)
+  const [inventory, setInventory] = useState<{name: string; quantity: number; totalProduced: number; totalSold: number}[]>([])
   const [businessConfig, setBusinessConfig] = useState({
     costoManoObra: '',
     costoEnergia: '',
@@ -414,6 +416,23 @@ function App() {
               >
                 {showHistory ? '← Volver' : '📋 Historial'}
               </button>
+              <button
+                onClick={async () => {
+                  if (!showInventory) {
+                    const { getStockByProduct } = await import('./services/db')
+                    const stockData = await getStockByProduct()
+                    setInventory(stockData)
+                  }
+                  setShowInventory(!showInventory)
+                  if (showSummary) setShowSummary(false)
+                  if (showHistory) setShowHistory(false)
+                }}
+                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                  showInventory ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
+                }`}
+              >
+                {showInventory ? '← Volver' : '📦 Inventario'}
+              </button>
             </div>
           </div>
 
@@ -545,7 +564,42 @@ function App() {
             </div>
           )}
 
-          {!showHistory && !showSummary && (
+          {showInventory && (
+            <div className="bg-white rounded-xl shadow-md overflow-hidden">
+              <div className="p-4 border-b border-gray-200">
+                <h2 className="text-xl font-bold text-gray-800">Inventario</h2>
+                <p className="text-sm text-gray-500">{inventory.length} productos</p>
+              </div>
+
+              {inventory.length === 0 ? (
+                <div className="p-12 text-center">
+                  <p className="text-gray-400 text-lg mb-2">No hay productos en inventario</p>
+                  <p className="text-gray-400 text-sm">Registra producciones para ver el inventario</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {inventory.map((item, index) => (
+                    <div key={index} className="p-4 flex justify-between items-center hover:bg-gray-50">
+                      <div>
+                        <p className="font-medium text-gray-800">{item.name}</p>
+                        <p className="text-xs text-gray-400">
+                          Producido: {item.totalProduced || 0} | Vendido: {item.totalSold || 0}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-xl font-bold ${item.quantity > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                          {item.quantity}
+                        </p>
+                        <p className="text-xs text-gray-400">en stock</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!showHistory && !showSummary && !showConfig && !showInventory && (
             <>
               <p className="text-center text-sm text-gray-500">Negocio ID: 1</p>
 
