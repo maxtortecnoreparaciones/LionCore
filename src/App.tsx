@@ -274,6 +274,18 @@ function App() {
       return
     }
 
+    if (mode === 'venta') {
+      const { getProductStock } = await import('./services/db')
+      
+      for (const item of items) {
+        const stock = await getProductStock(item.producto)
+        if (stock < item.cantidad) {
+          showNotification('error', `Stock insuficiente para "${item.producto}". Stock actual: ${stock}`)
+          return
+        }
+      }
+    }
+
     setLoading(true)
 
     try {
