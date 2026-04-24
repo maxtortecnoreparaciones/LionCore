@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary } from './services/db'
 
-type Mode = 'venta' | 'compra' | 'gasto'
+type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
 
 interface Item {
   id: number
@@ -38,6 +38,8 @@ const getTypeStyle = (type: string): string => {
       return 'bg-blue-100 text-blue-700'
     case 'gasto':
       return 'bg-red-100 text-red-700'
+    case 'produccion':
+      return 'bg-purple-100 text-purple-700'
     default:
       return 'bg-gray-100 text-gray-700'
   }
@@ -407,7 +409,7 @@ function App() {
 
               <div className="bg-white rounded-xl shadow-md p-4">
                 <div className="flex gap-2">
-                  {(['venta', 'compra', 'gasto'] as Mode[]).map((m) => (
+                  {(['venta', 'compra', 'gasto', 'produccion'] as Mode[]).map((m) => (
                     <button
                       key={m}
                       onClick={() => setMode(m)}

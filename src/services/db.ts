@@ -21,7 +21,7 @@ export interface Product {
 export interface Transaction {
   id?: number
   businessId: number
-  type: 'venta' | 'compra' | 'gasto'
+  type: 'venta' | 'compra' | 'gasto' | 'produccion'
   total: number
   date: Date
 }
@@ -34,6 +34,14 @@ export interface TransactionItem {
   quantity: number
   price: number
   subtotal: number
+  costUnitario?: number
+}
+
+export interface TransactionMeta {
+  id?: number
+  transactionId: number
+  key: string
+  value: string | number
 }
 
 // ==================== BASE DE DATOS ====================
@@ -43,6 +51,7 @@ class LionCoreDB extends Dexie {
   products!: Table<Product, number>
   transactions!: Table<Transaction, number>
   transaction_items!: Table<TransactionItem, number>
+  transaction_meta!: Table<TransactionMeta, number>
 
   constructor() {
     super('LionCoreDB')
@@ -52,6 +61,12 @@ class LionCoreDB extends Dexie {
       products: '++id, businessId, name',
       transactions: '++id, businessId, type, date',
       transaction_items: '++id, transactionId',
+    })
+
+    this.version(2).stores({
+      transaction_meta: '++id, transactionId, key',
+    }).upgrade(() => {
+      return Promise.resolve()
     })
   }
 }
@@ -118,7 +133,7 @@ export async function searchProducts(query: string): Promise<Product[]> {
 
 // --- Transacciones ---
 export async function createTransaction(
-  type: 'venta' | 'compra' | 'gasto',
+  type: 'venta' | 'compra' | 'gasto' | 'produccion',
   items: Omit<TransactionItem, 'id' | 'transactionId'>[]
 ): Promise<number> {
   const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0)
@@ -141,7 +156,7 @@ export async function createTransaction(
 }
 
 export async function getTransactions(
-  type?: 'venta' | 'compra' | 'gasto'
+  type?: 'venta' | 'compra' | 'gasto' | 'produccion'
 ): Promise<Transaction[]> {
   const businessId = getCurrentBusinessId()
   
@@ -247,7 +262,7 @@ export async function getWeeklySummary(): Promise<FinancialSummary> {
     .toArray()
   
   const entradas = transactions.filter(t => t.type === 'venta').reduce((sum, t) => sum + t.total, 0)
-  const salidas = transactions.filter(t => t.type === 'compra' || t.type === 'gasto').reduce((sum, t) => sum + t.total, 0)
+  const salidas = transactions.filter(t => t.type === 'compra' || t.type === 'gasto' || t.type === 'produccion').reduce((sum, t) => sum + t.total, 0)
   
   return {
     entradas,
@@ -269,7 +284,7 @@ export async function getMonthlySummary(): Promise<FinancialSummary> {
     .toArray()
   
   const entradas = transactions.filter(t => t.type === 'venta').reduce((sum, t) => sum + t.total, 0)
-  const salidas = transactions.filter(t => t.type === 'compra' || t.type === 'gasto').reduce((sum, t) => sum + t.total, 0)
+  const salidas = transactions.filter(t => t.type === 'compra' || t.type === 'gasto' || t.type === 'produccion').reduce((sum, t) => sum + t.total, 0)
   
   return {
     entradas,
@@ -277,4 +292,81 @@ export async function getMonthlySummary(): Promise<FinancialSummary> {
     balance: entradas - salidas,
     transacciones: transactions.length,
   }
+}
+
+export interface ProductStock {
+  name: string
+  quantity: number
+  totalProduced: number
+  totalSold: number
+}
+
+export async function getStockByProduct(): Promise<ProductStock[]> {
+  const businessId = getCurrentBusinessId()
+  
+  const transactions = await db.transactions
+    .where('businessId')
+    .equals(businessId)
+    .toArray()
+  
+  const productionTxs = transactions.filter(t => t.type === 'produccion')
+  const saleTxs = transactions.filter(t => t.type === 'venta')
+  
+  const stockMap = new Map<string, { produced: number; sold: number }>()
+  
+  for (const tx of productionTxs) {
+    const items = await db.transaction_items.where('transactionId').equals(tx.id!).toArray()
+    for (const item of items) {
+      const current = stockMap.get(item.name) || { produced: 0, sold: 0 }
+      stockMap.set(item.name, {
+        produced: current.produced + item.quantity,
+        sold: current.sold
+      })
+    }
+  }
+  
+  for (const tx of saleTxs) {
+    const items = await db.transaction_items.where('transactionId').equals(tx.id!).toArray()
+    for (const item of items) {
+      const current = stockMap.get(item.name) || { produced: 0, sold: 0 }
+      stockMap.set(item.name, {
+        produced: current.produced,
+        sold: current.sold + item.quantity
+      })
+    }
+  }
+  
+  return Array.from(stockMap.entries()).map(([name, data]) => ({
+    name,
+    quantity: data.produced - data.sold,
+    totalProduced: data.produced,
+    totalSold: data.sold
+  }))
+}
+
+export async function getProductStock(productName: string): Promise<number> {
+  const stocks = await getStockByProduct()
+  const product = stocks.find(s => s.name.toLowerCase() === productName.toLowerCase())
+  return product?.quantity || 0
+}
+
+export async function saveTransactionMeta(transactionId: number, meta: Record<string, string | number>): Promise<void> {
+  const metaRecords = Object.entries(meta).map(([key, value]) => ({
+    transactionId,
+    key,
+    value: typeof value === 'number' ? value.toString() : value
+  }))
+  
+  await db.transaction_meta.bulkAdd(metaRecords)
+}
+
+export async function getTransactionMeta(transactionId: number): Promise<Record<string, string>> {
+  const metaRecords = await db.transaction_meta.where('transactionId').equals(transactionId).toArray()
+  const meta: Record<string, string> = {}
+  
+  for (const record of metaRecords) {
+    meta[record.key] = String(record.value)
+  }
+  
+  return meta
 }
