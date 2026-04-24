@@ -146,6 +146,8 @@ function App() {
   const [showConfig, setShowConfig] = useState(false)
   const [showInventory, setShowInventory] = useState(false)
   const [inventory, setInventory] = useState<{name: string; quantity: number; totalProduced: number; totalSold: number}[]>([])
+  const [productSuggestions, setProductSuggestions] = useState<{name: string; stock: number; lastPrice?: number}[]>([])
+  const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [businessConfig, setBusinessConfig] = useState({
     costoManoObra: '',
     costoEnergia: '',
@@ -623,16 +625,62 @@ function App() {
 
               <div className="bg-white rounded-xl shadow-md p-4">
                 <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder={editingId ? 'Editando producto...' : 'Producto'}
-                    value={producto}
-                    onChange={(e) => setProducto(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    className={`flex-2 flex-1 py-3 px-4 border rounded-lg focus:outline-none focus:ring-2 ${
-                      editingId ? 'border-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
-                    } focus:border-transparent`}
-                  />
+                  <div className="relative flex-2 flex-1">
+                    <input
+                      type="text"
+                      placeholder={editingId ? 'Editando producto...' : mode === 'venta' ? 'Buscar producto...' : 'Producto'}
+                      value={producto}
+                      onChange={async (e) => {
+                        setProducto(e.target.value)
+                        if (mode === 'venta' && e.target.value.length > 1) {
+                          const { getStockByProduct } = await import('./services/db')
+                          const stockData = await getStockByProduct()
+                          const filtered = stockData.filter(p => 
+                            p.name.toLowerCase().includes(e.target.value.toLowerCase()) && p.quantity > 0
+                          )
+                          setProductSuggestions(filtered.map(p => ({ name: p.name, stock: p.quantity })))
+                          setShowProductDropdown(filtered.length > 0)
+                        } else {
+                          setShowProductDropdown(false)
+                        }
+                      }}
+                      onFocus={async () => {
+                        if (mode === 'venta' && producto.length > 1) {
+                          const { getStockByProduct } = await import('./services/db')
+                          const stockData = await getStockByProduct()
+                          const filtered = stockData.filter(p => 
+                            p.name.toLowerCase().includes(producto.toLowerCase()) && p.quantity > 0
+                          )
+                          setProductSuggestions(filtered.map(p => ({ name: p.name, stock: p.quantity })))
+                          setShowProductDropdown(filtered.length > 0)
+                        }
+                      }}
+                      onBlur={() => setTimeout(() => setShowProductDropdown(false), 150)}
+                      onKeyPress={handleKeyPress}
+                      className={`w-full py-3 px-4 border rounded-lg focus:outline-none focus:ring-2 ${
+                        editingId ? 'border-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
+                      } focus:border-transparent`}
+                    />
+                    {showProductDropdown && productSuggestions.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {productSuggestions.map((p, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => {
+                              setProducto(p.name)
+                              setShowProductDropdown(false)
+                            }}
+                            className="w-full px-4 py-2 text-left hover:bg-blue-50 flex justify-between items-center border-b border-gray-100 last:border-b-0"
+                          >
+                            <span className="font-medium text-gray-800">{p.name}</span>
+                            <span className={`text-sm ${p.stock > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                              Stock: {p.stock}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <input
                     type="number"
                     placeholder="Cant"
