@@ -638,7 +638,7 @@ function App() {
                           const filtered = stockData.filter(p => 
                             p.name.toLowerCase().includes(e.target.value.toLowerCase()) && p.quantity > 0
                           )
-                          setProductSuggestions(filtered.map(p => ({ name: p.name, stock: p.quantity })))
+                          setProductSuggestions(filtered.map(p => ({ name: p.name, stock: p.quantity, lastPrice: p.lastPrice })))
                           setShowProductDropdown(filtered.length > 0)
                         } else {
                           setShowProductDropdown(false)
@@ -651,7 +651,7 @@ function App() {
                           const filtered = stockData.filter(p => 
                             p.name.toLowerCase().includes(producto.toLowerCase()) && p.quantity > 0
                           )
-                          setProductSuggestions(filtered.map(p => ({ name: p.name, stock: p.quantity })))
+                          setProductSuggestions(filtered.map(p => ({ name: p.name, stock: p.quantity, lastPrice: p.lastPrice })))
                           setShowProductDropdown(filtered.length > 0)
                         }
                       }}
@@ -662,20 +662,30 @@ function App() {
                       } focus:border-transparent`}
                     />
                     {showProductDropdown && productSuggestions.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                         {productSuggestions.map((p, idx) => (
                           <button
                             key={idx}
                             onClick={() => {
                               setProducto(p.name)
+                              if (p.lastPrice) setPrecio(String(p.lastPrice))
                               setShowProductDropdown(false)
                             }}
-                            className="w-full px-4 py-2 text-left hover:bg-blue-50 flex justify-between items-center border-b border-gray-100 last:border-b-0"
+                            className="w-full px-4 py-3 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
                           >
-                            <span className="font-medium text-gray-800">{p.name}</span>
-                            <span className={`text-sm ${p.stock > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                              Stock: {p.stock}
-                            </span>
+                            <div className="flex justify-between items-center">
+                              <span className="font-medium text-gray-800">{p.name}</span>
+                              <div className="text-right">
+                                <span className={`text-sm font-semibold ${p.stock > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                  Stock: {p.stock}
+                                </span>
+                                {p.lastPrice && (
+                                  <span className="ml-3 text-sm text-blue-600">
+                                    Anterior: {formatCOP(p.lastPrice)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </button>
                         ))}
                       </div>
