@@ -145,7 +145,7 @@ function App() {
   const [loadingSummary, setLoadingSummary] = useState(false)
   const [showConfig, setShowConfig] = useState(false)
   const [showInventory, setShowInventory] = useState(false)
-  const [inventory, setInventory] = useState<{name: string; quantity: number; totalProduced: number; totalSold: number}[]>([])
+  const [inventory, setInventory] = useState<{name: string; quantity: number; totalProduced: number; totalSold: number; lastPrice?: number}[]>([])
   const [productSuggestions, setProductSuggestions] = useState<{name: string; stock: number; lastPrice?: number}[]>([])
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [businessConfig, setBusinessConfig] = useState({
@@ -587,6 +587,11 @@ function App() {
                         <p className="text-xs text-gray-400">
                           Producido: {item.totalProduced || 0} | Vendido: {item.totalSold || 0}
                         </p>
+                        {item.lastPrice && (
+                          <p className="text-sm text-blue-600 font-semibold">
+                            Precio: {formatCOP(item.lastPrice)}
+                          </p>
+                        )}
                       </div>
                       <div className="text-right">
                         <p className={`text-xl font-bold ${item.quantity > 0 ? 'text-green-600' : 'text-red-500'}`}>

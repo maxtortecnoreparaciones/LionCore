@@ -313,7 +313,7 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
   const productionTxs = transactions.filter(t => t.type === 'produccion')
   const saleTxs = transactions.filter(t => t.type === 'venta')
   
-  const stockMap = new Map<string, { produced: number; sold: number; lastPrice?: number }>()
+  const stockMap = new Map<string, { produced: number; sold: number; lastProductionPrice?: number }>()
   
   for (const tx of productionTxs) {
     const items = await db.transaction_items.where('transactionId').equals(tx.id!).toArray()
@@ -322,21 +322,19 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
       stockMap.set(item.name, {
         produced: current.produced + item.quantity,
         sold: current.sold,
-        lastPrice: current.lastPrice
+        lastProductionPrice: item.price
       })
     }
   }
   
-  const sortedSaleTxs = [...saleTxs].sort((a, b) => b.id! - a.id!)
-  
-  for (const tx of sortedSaleTxs) {
+  for (const tx of saleTxs) {
     const items = await db.transaction_items.where('transactionId').equals(tx.id!).toArray()
     for (const item of items) {
       const current = stockMap.get(item.name) || { produced: 0, sold: 0 }
       stockMap.set(item.name, {
         produced: current.produced,
         sold: current.sold + item.quantity,
-        lastPrice: current.lastPrice || item.price
+        lastProductionPrice: current.lastProductionPrice
       })
     }
   }
@@ -346,7 +344,7 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
     quantity: data.produced - data.sold,
     totalProduced: data.produced,
     totalSold: data.sold,
-    lastPrice: data.lastPrice
+    lastPrice: data.lastProductionPrice
   }))
 }
 
