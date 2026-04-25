@@ -35,6 +35,7 @@ export interface TransactionItem {
   price: number
   subtotal: number
   costUnitario?: number
+  unit?: string
 }
 
 export interface TransactionMeta {
@@ -300,6 +301,7 @@ export interface ProductStock {
   totalProduced: number
   totalSold: number
   lastPrice?: number
+  unit?: string
 }
 
 export async function getStockByProduct(): Promise<ProductStock[]> {
@@ -313,7 +315,7 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
   const productionTxs = transactions.filter(t => t.type === 'produccion')
   const saleTxs = transactions.filter(t => t.type === 'venta')
   
-  const stockMap = new Map<string, { produced: number; sold: number; lastProductionPrice?: number }>()
+  const stockMap = new Map<string, { produced: number; sold: number; lastProductionPrice?: number; unit?: string }>()
   
   for (const tx of productionTxs) {
     const items = await db.transaction_items.where('transactionId').equals(tx.id!).toArray()
@@ -322,7 +324,8 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
       stockMap.set(item.name, {
         produced: current.produced + item.quantity,
         sold: current.sold,
-        lastProductionPrice: item.price
+        lastProductionPrice: item.price,
+        unit: item.unit || current.unit || 'unidades'
       })
     }
   }
@@ -334,7 +337,8 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
       stockMap.set(item.name, {
         produced: current.produced,
         sold: current.sold + item.quantity,
-        lastProductionPrice: current.lastProductionPrice
+        lastProductionPrice: current.lastProductionPrice,
+        unit: current.unit || 'unidades'
       })
     }
   }
@@ -344,7 +348,8 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
     quantity: data.produced - data.sold,
     totalProduced: data.produced,
     totalSold: data.sold,
-    lastPrice: data.lastProductionPrice
+    lastPrice: data.lastProductionPrice,
+    unit: data.unit
   }))
 }
 

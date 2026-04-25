@@ -145,7 +145,7 @@ function App() {
   const [loadingSummary, setLoadingSummary] = useState(false)
   const [showConfig, setShowConfig] = useState(false)
   const [showInventory, setShowInventory] = useState(false)
-  const [inventory, setInventory] = useState<{name: string; quantity: number; totalProduced: number; totalSold: number; lastPrice?: number}[]>([])
+  const [inventory, setInventory] = useState<{name: string; quantity: number; totalProduced: number; totalSold: number; lastPrice?: number; unit?: string}[]>([])
   const [productSuggestions, setProductSuggestions] = useState<{name: string; stock: number; lastPrice?: number}[]>([])
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [editingPriceProduct, setEditingPriceProduct] = useState<string | null>(null)
@@ -337,13 +337,18 @@ function App() {
 
       await getOrCreateDefaultBusiness()
 
-      const transactionItems = items.map(item => ({
-        name: item.producto,
-        quantity: item.cantidad,
-        price: item.precio,
-        subtotal: item.cantidad * item.precio,
-        costUnitario: mode === 'produccion' ? item.precio / item.cantidad : undefined,
-      }))
+      const transactionItems = items.map(item => {
+        const isProduction = mode === 'produccion'
+        const hasWeight = isProduction && productionMeta.pesoSalida
+        return {
+          name: item.producto,
+          quantity: hasWeight ? Number(productionMeta.pesoSalida) : item.cantidad,
+          price: item.precio,
+          subtotal: (hasWeight ? Number(productionMeta.pesoSalida) : item.cantidad) * item.precio,
+          costUnitario: isProduction ? item.precio / (hasWeight ? Number(productionMeta.pesoSalida) : item.cantidad) : undefined,
+          unit: hasWeight ? 'kg' : undefined,
+        }
+      })
 
       const transactionId = await createTransaction(mode, transactionItems)
 
@@ -652,7 +657,7 @@ function App() {
                       </div>
                       <div className="text-right ml-4">
                         <p className={`text-xl font-bold ${item.quantity > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                          {item.quantity}
+                          {item.quantity} <span className="text-base font-normal">{item.unit || 'unidades'}</span>
                         </p>
                         <p className="text-xs text-gray-400">en stock</p>
                       </div>
