@@ -148,6 +148,8 @@ function App() {
   const [inventory, setInventory] = useState<{name: string; quantity: number; totalProduced: number; totalSold: number; lastPrice?: number}[]>([])
   const [productSuggestions, setProductSuggestions] = useState<{name: string; stock: number; lastPrice?: number}[]>([])
   const [showProductDropdown, setShowProductDropdown] = useState(false)
+  const [editingPriceProduct, setEditingPriceProduct] = useState<string | null>(null)
+  const [editingPriceValue, setEditingPriceValue] = useState('')
   const [businessConfig, setBusinessConfig] = useState({
     costoManoObra: '',
     costoEnergia: '',
@@ -284,6 +286,25 @@ function App() {
     setCantidad(1)
     setPrecio('')
     setEditingId(null)
+  }
+
+  const handleSavePrice = async (productName: string) => {
+    const newPrice = Number(editingPriceValue)
+    if (!newPrice || newPrice <= 0) {
+      showNotification('error', 'Precio inválido')
+      return
+    }
+    try {
+      const { updateProductSuggestedPrice, getStockByProduct } = await import('./services/db')
+      await updateProductSuggestedPrice(productName, newPrice)
+      const stockData = await getStockByProduct()
+      setInventory(stockData)
+      setEditingPriceProduct(null)
+      setEditingPriceValue('')
+      showNotification('success', `Precio actualizado`)
+    } catch {
+      showNotification('error', 'Error al actualizar precio')
+    }
   }
 
   const handleGuardar = async () => {
@@ -582,18 +603,54 @@ function App() {
                 <div className="divide-y divide-gray-100">
                   {inventory.map((item, index) => (
                     <div key={index} className="p-4 flex justify-between items-center hover:bg-gray-50">
-                      <div>
+                      <div className="flex-1">
                         <p className="font-medium text-gray-800">{item.name}</p>
                         <p className="text-xs text-gray-400">
                           Producido: {item.totalProduced || 0} | Vendido: {item.totalSold || 0}
                         </p>
-                        {item.lastPrice && (
-                          <p className="text-sm text-blue-600 font-semibold">
-                            Precio: {formatCOP(item.lastPrice)}
-                          </p>
-                        )}
+                        <div className="flex items-center gap-2 mt-1">
+                          {editingPriceProduct === item.name ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                value={editingPriceValue}
+                                onChange={(e) => setEditingPriceValue(e.target.value)}
+                                className="w-24 py-1 px-2 border border-blue-400 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                autoFocus
+                                onKeyPress={(e) => e.key === 'Enter' && handleSavePrice(item.name)}
+                              />
+                              <button
+                                onClick={() => handleSavePrice(item.name)}
+                                className="px-2 py-1 bg-green-500 text-white text-xs rounded hover:bg-green-600"
+                              >
+                                Guardar
+                              </button>
+                              <button
+                                onClick={() => setEditingPriceProduct(null)}
+                                className="px-2 py-1 bg-gray-400 text-white text-xs rounded hover:bg-gray-500"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <span className="text-sm text-blue-600 font-semibold">
+                                Precio: {item.lastPrice ? formatCOP(item.lastPrice) : 'Sin precio'}
+                              </span>
+                              <button
+                                onClick={() => {
+                                  setEditingPriceProduct(item.name)
+                                  setEditingPriceValue(item.lastPrice ? String(item.lastPrice) : '')
+                                }}
+                                className="px-2 py-1 bg-blue-100 text-blue-600 text-xs rounded hover:bg-blue-200"
+                              >
+                                Editar
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right ml-4">
                         <p className={`text-xl font-bold ${item.quantity > 0 ? 'text-green-600' : 'text-red-500'}`}>
                           {item.quantity}
                         </p>

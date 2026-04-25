@@ -354,6 +354,30 @@ export async function getProductStock(productName: string): Promise<number> {
   return product?.quantity || 0
 }
 
+export async function updateProductSuggestedPrice(productName: string, newPrice: number): Promise<void> {
+  const businessId = getCurrentBusinessId()
+  
+  const productions = await db.transactions
+    .where('businessId')
+    .equals(businessId)
+    .and(t => t.type === 'produccion')
+    .reverse()
+    .sortBy('id')
+  
+  for (const tx of productions) {
+    const items = await db.transaction_items
+      .where('transactionId')
+      .equals(tx.id!)
+      .and(item => item.name.toLowerCase() === productName.toLowerCase())
+      .toArray()
+    
+    if (items.length > 0) {
+      await db.transaction_items.update(items[0].id!, { price: newPrice })
+      return
+    }
+  }
+}
+
 export async function saveTransactionMeta(transactionId: number, meta: Record<string, string | number>): Promise<void> {
   const metaRecords = Object.entries(meta).map(([key, value]) => ({
     transactionId,
