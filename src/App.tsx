@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, businessTemplates } from './services/db'
+import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, businessTemplates, getCurrentBusinessId, setCurrentBusinessId, getCurrentBusinessTemplate } from './services/db'
 
 type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
 
@@ -432,6 +432,20 @@ function App() {
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-gray-800">LionCore POS</h1>
             <div className="flex gap-2">
+              <select
+                value={getCurrentBusinessId()}
+                onChange={async (e) => {
+                  const id = Number(e.target.value)
+                  setCurrentBusinessId(id)
+                  const template = await getCurrentBusinessTemplate()
+                  setActiveTemplate(template)
+                  window.location.reload()
+                }}
+                className="px-3 py-2 border rounded-lg bg-white text-gray-800 font-semibold"
+              >
+                <option value={1}>Negocio 1 (POS)</option>
+                <option value={2}>Negocio 2 (Deshid)</option>
+              </select>
               <button
                 onClick={() => { setShowConfig(!showConfig); setShowSummary(false); setShowHistory(false); }}
                 className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
