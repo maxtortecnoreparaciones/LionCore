@@ -347,7 +347,6 @@ function App() {
           price: item.precio,
           subtotal: kgQuantity * item.precio,
           costUnitario: isProduction ? item.precio / kgQuantity : undefined,
-          unit: isProduction ? 'kg' : undefined,
         }
       })
 
