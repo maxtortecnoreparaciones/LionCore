@@ -1,24 +1,50 @@
 ## Descripción
 
-Actualmente la UI muestra los mismos campos para todos los modos (venta, compra, producción).
+Configurar el sistema para soportar múltiples negocios con diferentes plantillas y unidades de medida.
 
-Se debe modificar el formulario para que cambie dinámicamente cuando el modo sea producción.
+## Negocios requeridos
 
-## Cambios requeridos
+### 1. Business ID 1:
+- Tipo: POS (Service Store VIP)
+- Unidad: unidades
+- Flujo: ventas tradicional
 
-### 1. En modo producción:
-- Cambiar Cantidad → Cantidad (kg)
-- Cambiar Precio → Costo materia prima
-- El valor de cantidad debe representar kg
+### 2. Business ID 2:
+- Tipo: deshidratados
+- Unidad: kg
+- Flujo: producción simplificada
 
-### 2. En modo venta:
-- Mantener:
-  - Cantidad (unidades o kg según negocio)
-  - Precio (precio de venta)
+## Objetivos
 
-### 3. Implementar lógica condicional en UI:
-\`if (mode === "produccion") mostrar campos de producción else mostrar campos normales\`
+- Detectar el negocio activo al iniciar
+- Cargar automáticamente su plantilla
+- Adaptar la UI según el tipo de negocio
 
-## Objetivo
+## Implementación sugerida
 
-Que la interfaz refleje correctamente el contexto de producción.
+### 1. Agregar campo 'tipo' a negocios:
+\`\`\`typescript
+interface Business {
+  id?: number
+  name: string
+  tipo: 'pos' | 'deshidratados'
+}
+\`\`\`
+
+### 2. Crear configuración por tipo:
+\`\`\`typescript
+const businessTemplates = {
+  pos: {
+    unidad: 'unidades',
+    showProduccion: true,
+    showGastos: true
+  },
+  deshidratados: {
+    unidad: 'kg',
+    showProduccion: true,
+    showGastos: false
+  }
+}
+\`\`\`
+
+### 3. Cargar según businessId activo

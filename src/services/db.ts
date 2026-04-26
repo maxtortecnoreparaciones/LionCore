@@ -2,10 +2,33 @@ import Dexie, { Table } from 'dexie'
 
 // ==================== TIPOS ====================
 
+export type BusinessType = 'pos' | 'deshidratados'
+
 export interface Business {
   id?: number
   name: string
+  tipo?: BusinessType
   createdAt: Date
+}
+
+export const businessTemplates: Record<BusinessType, {
+  unidad: string
+  showProduccion: boolean
+  showGastos: boolean
+  showCompra: boolean
+}> = {
+  pos: {
+    unidad: 'unidades',
+    showProduccion: true,
+    showGastos: true,
+    showCompra: true
+  },
+  deshidratados: {
+    unidad: 'kg',
+    showProduccion: true,
+    showGastos: false,
+    showCompra: true
+  }
 }
 
 export interface Product {
@@ -91,6 +114,13 @@ export function setCurrentBusinessId(id: number): void {
   localStorage.setItem(BUSINESS_ID_KEY, id.toString())
 }
 
+export async function getCurrentBusinessTemplate() {
+  const businessId = getCurrentBusinessId()
+  const business = await db.businesses.get(businessId)
+  const tipo = business?.tipo || 'pos'
+  return businessTemplates[tipo]
+}
+
 export async function getOrCreateDefaultBusiness(): Promise<Business> {
   const business = await db.businesses.get(1)
   
@@ -98,6 +128,7 @@ export async function getOrCreateDefaultBusiness(): Promise<Business> {
   
   const newBusiness: Business = {
     name: 'Mi Negocio',
+    tipo: 'pos',
     createdAt: new Date(),
   }
   

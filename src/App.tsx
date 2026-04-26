@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db } from './services/db'
+import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, businessTemplates } from './services/db'
 
 type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
 
@@ -121,6 +121,7 @@ const InvoicePreview = ({ mode, items, total, onClose }: { mode: Mode; items: It
 
 function App() {
   const [mode, setMode] = useState<Mode>('venta')
+  const [activeTemplate, setActiveTemplate] = useState(businessTemplates.pos)
   const [producto, setProducto] = useState('')
   const [cantidad, setCantidad] = useState<number>(1)
   const [precio, setPrecio] = useState<string>('')
@@ -334,13 +335,14 @@ function App() {
     setLoading(true)
 
     try {
-      const { getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta } = await import('./services/db')
+      const { getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getCurrentBusinessTemplate } = await import('./services/db')
 
       await getOrCreateDefaultBusiness()
+      const template = await getCurrentBusinessTemplate()
+      setActiveTemplate(template)
 
       const transactionItems = items.map(item => {
         const isProduction = mode === 'produccion'
-        const isSaleOrPurchase = mode === 'venta' || mode === 'compra'
         const kgQuantity = isProduction && productionMeta.pesoEntrada ? Number(productionMeta.pesoEntrada) : item.cantidad
         return {
           name: item.producto,
@@ -348,7 +350,6 @@ function App() {
           price: item.precio,
           subtotal: kgQuantity * item.precio,
           costUnitario: isProduction ? item.precio / kgQuantity : undefined,
-          unit: isSaleOrPurchase ? 'kg' : undefined,
         }
       })
 
@@ -397,6 +398,14 @@ function App() {
     if (e.key === 'Enter') {
       handleAgregar()
     }
+  }
+
+  const getAvailableModes = (): Mode[] => {
+    const bases: Mode[] = ['venta']
+    if (activeTemplate.showCompra) bases.push('compra')
+    if (activeTemplate.showProduccion) bases.push('produccion')
+    if (activeTemplate.showGastos) bases.push('gasto')
+    return bases
   }
 
   return (
@@ -727,7 +736,7 @@ function App() {
 
               <div className="bg-white rounded-xl shadow-md p-4">
                 <div className="flex gap-2">
-                  {(['venta', 'compra', 'gasto', 'produccion'] as Mode[]).map((m) => (
+                  {getAvailableModes().map((m) => (
                     <button
                       key={m}
                       onClick={() => setMode(m)}
