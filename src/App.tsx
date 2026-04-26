@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, businessTemplates, getCurrentBusinessId, setCurrentBusinessId, getCurrentBusinessTemplate } from './services/db'
 
 type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
@@ -122,15 +122,6 @@ const InvoicePreview = ({ mode, items, total, onClose }: { mode: Mode; items: It
 function App() {
   const [mode, setMode] = useState<Mode>('venta')
   const [activeTemplate, setActiveTemplate] = useState(businessTemplates.pos)
-  
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const businessId = params.get('b')
-    if (businessId) {
-      setCurrentBusinessId(Number(businessId))
-    }
-    getCurrentBusinessTemplate().then(setActiveTemplate)
-  }, [])
   const [producto, setProducto] = useState('')
   const [cantidad, setCantidad] = useState<number>(1)
   const [precio, setPrecio] = useState<string>('')
