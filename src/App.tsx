@@ -146,7 +146,7 @@ function App() {
   const [loadingSummary, setLoadingSummary] = useState(false)
   const [showConfig, setShowConfig] = useState(false)
   const [showInventory, setShowInventory] = useState(false)
-  const [inventory, setInventory] = useState<{name: string; quantity: number; totalProduced: number; totalSold: number; lastPrice?: number; unit?: string}[]>([])
+  const [inventory, setInventory] = useState<{name: string; quantity: number; totalProduced: number; totalSold: number; lastPrice?: number}[]>([])
   const [productSuggestions, setProductSuggestions] = useState<{name: string; stock: number; lastPrice?: number}[]>([])
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [editingPriceProduct, setEditingPriceProduct] = useState<string | null>(null)
@@ -492,11 +492,10 @@ function App() {
               {showInventory && inventory.length > 0 && (
                 <button
                   onClick={() => {
-                    const headers = ['Producto', 'Stock', 'Unidad', 'Producido', 'Vendido', 'Precio']
+                    const headers = ['Producto', 'Stock', 'Producido', 'Vendido', 'Precio']
                     const rows = inventory.map(item => [
                       item.name,
                       item.quantity,
-                      item.unit || 'unidades',
                       item.totalProduced,
                       item.totalSold,
                       item.lastPrice || ''
@@ -711,7 +710,7 @@ function App() {
                       </div>
                       <div className="text-right ml-4">
                         <p className={`text-xl font-bold ${item.quantity > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                          {item.quantity} <span className="text-base font-normal">{item.unit || 'unidades'}</span>
+                          {item.quantity}
                         </p>
                         <p className="text-xs text-gray-400">en stock</p>
                       </div>
