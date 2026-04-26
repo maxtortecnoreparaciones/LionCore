@@ -1,0 +1,30 @@
+## Descripción
+
+Simplificar la interfaz y lógica de producción para negocios tipo deshidratados.
+
+## Cambios propuestos
+
+### 1. Eliminar campo
+- Peso entrada
+
+### 2. Unificar campos
+- Cantidad ahora representa Peso salida (kg)
+
+### 3. Mantener
+- Desperdicio (kg)
+- Tiempo (min)
+
+### 4. Agregar campo
+- Notas (opcional)
+
+### 5. UI
+- Cambiar todos los textos de unidad a kg
+- Mostrar: Cantidad (kg)
+
+### 6. Lógica
+- Guardar cantidad como kg en transaction_items
+- Usar este valor para inventario
+
+## Objetivo
+
+Reducir complejidad y hacer el flujo más natural para el usuario.
