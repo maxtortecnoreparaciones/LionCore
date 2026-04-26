@@ -1,30 +1,24 @@
 ## Descripción
 
-Simplificar la interfaz y lógica de producción para negocios tipo deshidratados.
+Actualmente la UI muestra los mismos campos para todos los modos (venta, compra, producción).
 
-## Cambios propuestos
+Se debe modificar el formulario para que cambie dinámicamente cuando el modo sea producción.
 
-### 1. Eliminar campo
-- Peso entrada
+## Cambios requeridos
 
-### 2. Unificar campos
-- Cantidad ahora representa Peso salida (kg)
+### 1. En modo producción:
+- Cambiar Cantidad → Cantidad (kg)
+- Cambiar Precio → Costo materia prima
+- El valor de cantidad debe representar kg
 
-### 3. Mantener
-- Desperdicio (kg)
-- Tiempo (min)
+### 2. En modo venta:
+- Mantener:
+  - Cantidad (unidades o kg según negocio)
+  - Precio (precio de venta)
 
-### 4. Agregar campo
-- Notas (opcional)
-
-### 5. UI
-- Cambiar todos los textos de unidad a kg
-- Mostrar: Cantidad (kg)
-
-### 6. Lógica
-- Guardar cantidad como kg en transaction_items
-- Usar este valor para inventario
+### 3. Implementar lógica condicional en UI:
+\`if (mode === "produccion") mostrar campos de producción else mostrar campos normales\`
 
 ## Objetivo
 
-Reducir complejidad y hacer el flujo más natural para el usuario.
+Que la interfaz refleje correctamente el contexto de producción.

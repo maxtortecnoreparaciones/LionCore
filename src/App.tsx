@@ -813,7 +813,7 @@ function App() {
                   </div>
                   <input
                     type="number"
-                    placeholder="Cant"
+                    placeholder={mode === 'produccion' ? 'kg' : 'Cant'}
                     value={cantidad}
                     onChange={(e) => setCantidad(Math.max(1, Number(e.target.value)))}
                     min={1}
@@ -824,7 +824,7 @@ function App() {
                   />
                   <input
                     type="number"
-                    placeholder="Precio"
+                    placeholder={mode === 'produccion' ? 'Costo' : 'Precio'}
                     value={precio}
                     onChange={(e) => setPrecio(e.target.value)}
                     onKeyPress={handleKeyPress}
