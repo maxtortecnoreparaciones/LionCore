@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta } from './services/db'
+import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db } from './services/db'
 
 type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
 
@@ -461,6 +461,57 @@ function App() {
               >
                 {showInventory ? '← Volver' : '📦 Inventario'}
               </button>
+              {showHistory && transactions.length > 0 && (
+                <button
+                  onClick={async () => {
+                    const headers = ['ID', 'Fecha', 'Tipo', 'Producto', 'Cantidad', 'Precio', 'Total']
+                    const rows = []
+                    for (const tx of transactions) {
+                      const items = await db.transaction_items.where('transactionId').equals(tx.id!).toArray()
+                      for (const item of items) {
+                        rows.push([tx.id, new Date(tx.date).toLocaleDateString(), tx.type, item.name, item.quantity, item.price, item.subtotal])
+                      }
+                    }
+                    const csv = [headers, ...rows].map(r => r.join(',')).join('\n')
+                    const blob = new Blob([csv], { type: 'text/csv' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `transacciones_${new Date().toISOString().split('T')[0]}.csv`
+                    a.click()
+                    URL.revokeObjectURL(url)
+                  }}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors"
+                >
+                  📥 CSV
+                </button>
+              )}
+              {showInventory && inventory.length > 0 && (
+                <button
+                  onClick={() => {
+                    const headers = ['Producto', 'Stock', 'Unidad', 'Producido', 'Vendido', 'Precio']
+                    const rows = inventory.map(item => [
+                      item.name,
+                      item.quantity,
+                      item.unit || 'unidades',
+                      item.totalProduced,
+                      item.totalSold,
+                      item.lastPrice || ''
+                    ])
+                    const csv = [headers, ...rows].map(r => r.join(',')).join('\n')
+                    const blob = new Blob([csv], { type: 'text/csv' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `inventario_${new Date().toISOString().split('T')[0]}.csv`
+                    a.click()
+                    URL.revokeObjectURL(url)
+                  }}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors"
+                >
+                  📥 CSV
+                </button>
+              )}
             </div>
           </div>
 
