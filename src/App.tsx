@@ -340,7 +340,7 @@ function App() {
 
       const transactionItems = items.map(item => {
         const isProduction = mode === 'produccion'
-        const kgQuantity = isProduction && productionMeta.pesoSalida ? Number(productionMeta.pesoSalida) : item.cantidad
+        const kgQuantity = isProduction && productionMeta.pesoEntrada ? Number(productionMeta.pesoEntrada) : item.cantidad
         return {
           name: item.producto,
           quantity: kgQuantity,
@@ -355,6 +355,7 @@ function App() {
 
       if (mode === 'produccion') {
         const meta: Record<string, string | number> = {}
+        if (productionMeta.pesoEntrada) meta.peso_entrada = Number(productionMeta.pesoEntrada)
         if (productionMeta.pesoSalida) meta.peso_salida = Number(productionMeta.pesoSalida)
         if (productionMeta.desperdicio) meta.desperdicio = Number(productionMeta.desperdicio)
         if (productionMeta.tiempo) meta.tiempo = Number(productionMeta.tiempo)
@@ -876,7 +877,17 @@ function App() {
                     <div className="mt-4 space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs text-gray-500 mb-1">Cantidad (kg)</label>
+                          <label className="block text-xs text-gray-500 mb-1">Peso entrada (kg)</label>
+                          <input
+                            type="number"
+                            placeholder="0"
+                            value={productionMeta.pesoEntrada}
+                            onChange={(e) => setProductionMeta({ ...productionMeta, pesoEntrada: e.target.value })}
+                            className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Peso salida (kg)</label>
                           <input
                             type="number"
                             placeholder="0"
@@ -905,7 +916,7 @@ function App() {
                             className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                           />
                         </div>
-                        <div>
+                        <div className="col-span-2">
                           <label className="block text-xs text-gray-500 mb-1">Notas</label>
                           <input
                             type="text"
@@ -1039,7 +1050,8 @@ function App() {
                         <p className="text-sm text-gray-500 mt-1">{formatDate(tx.date)}</p>
                         {tx.type === 'produccion' && tx.meta && (
                           <div className="mt-2 text-xs text-gray-400 space-y-1">
-                            {tx.meta.peso_salida && <p>Cantidad: {tx.meta.peso_salida}kg</p>}
+                            {tx.meta.peso_entrada && <p>Peso entrada: {tx.meta.peso_entrada}kg</p>}
+                            {tx.meta.peso_salida && <p>Peso salida: {tx.meta.peso_salida}kg</p>}
                             {tx.meta.desperdicio && <p>Desperdicio: {tx.meta.desperdicio}kg</p>}
                             {tx.meta.tiempo && <p>Tiempo: {tx.meta.tiempo} min</p>}
                             {tx.meta.notas && <p>Notas: {tx.meta.notas}</p>}
