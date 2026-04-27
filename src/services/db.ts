@@ -26,7 +26,7 @@ export const businessTemplates: Record<BusinessType, {
   deshidratados: {
     unidad: 'kg',
     showProduccion: true,
-    showGastos: false,
+    showGastos: true,
     showCompra: true
   }
 }
@@ -110,11 +110,20 @@ export const db = new LionCoreDB()
 
 const BUSINESS_ID_KEY = 'lioncore_current_business'
 
-export function getCurrentBusinessId(): number {
+export function getCurrentBusinessIdFromUrl(): number {
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search)
+    const businessId = Number(params.get("business"))
+    if (businessId) return businessId
+  }
   const stored = localStorage.getItem(BUSINESS_ID_KEY)
   if (stored) return parseInt(stored, 10)
   
   return 1 // Default: primer negocio
+}
+
+export function getCurrentBusinessId(): number {
+  return getCurrentBusinessIdFromUrl()
 }
 
 export function setCurrentBusinessId(id: number): void {
