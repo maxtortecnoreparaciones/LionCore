@@ -122,18 +122,40 @@ const InvoicePreview = ({ mode, items, total, onClose }: { mode: Mode; items: It
 function App() {
   const [mode, setMode] = useState<Mode>('venta')
   const [activeTemplate, setActiveTemplate] = useState(businessTemplates.pos)
-  const [currentBusinessId, setCurrentBusinessIdState] = useState(getCurrentBusinessId())
+  const [currentBusinessId, setCurrentBusinessIdState] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    const id = Number(params.get("business")) || 1
+    console.log('📌 URL → business:', id)
+    return id
+  })
+  const [isLoading, setIsLoading] = useState(true)
+  const [debugInfo, setDebugInfo] = useState<{step: string, value: any}[]>([])
+  
+  const addDebug = (step: string, value: any) => {
+    setDebugInfo(prev => [...prev, { step, value }])
+    console.log(`🔍 ${step}:`, value)
+  }
   
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const businessId = Number(params.get("business"))
-    const targetId = businessId || 1
+    const initBusiness = async () => {
+      addDebug('1. URL businessId', currentBusinessId)
+      
+      setCurrentBusinessId(currentBusinessId)
+      setCurrentBusinessIdState(currentBusinessId)
+      
+      addDebug('2. setCurrentBusinessId', currentBusinessId)
+      
+      const template = await getCurrentBusinessTemplate(currentBusinessId)
+      addDebug('3. Template loaded', template)
+      
+      setActiveTemplate(template)
+      setIsLoading(false)
+      addDebug('4. Finished loading', 'OK')
+    }
     
-    setCurrentBusinessId(targetId)
-    setCurrentBusinessIdState(targetId)
-    
-    getCurrentBusinessTemplate(targetId).then(setActiveTemplate)
+    initBusiness()
   }, [])
+  
   const [producto, setProducto] = useState('')
   const [cantidad, setCantidad] = useState<number>(1)
   const [precio, setPrecio] = useState<string>('')
@@ -422,6 +444,28 @@ function App() {
 
   return (
     <>
+      {isLoading && (
+        <div className="fixed inset-0 bg-blue-600 flex items-center justify-center z-50">
+          <div className="text-white text-center">
+            <div className="text-2xl mb-4">Cargando negocio...</div>
+            <div className="text-sm opacity-75">Negocio ID: {currentBusinessId}</div>
+          </div>
+        </div>
+      )}
+      
+      {debugInfo.length > 0 && (
+        <div className="fixed bottom-4 right-4 bg-black/80 p-3 rounded-lg text-white text-xs max-w-xs z-50 overflow-auto max-h-48">
+          <div className="font-bold mb-2">🔍 Debug:</div>
+          {debugInfo.map((d, i) => (
+            <div key={i} className="mb-1">
+              <span className="text-yellow-400">{d.step}</span>
+              <span className="text-gray-400">: </span>
+              <span className="text-green-400">{JSON.stringify(d.value)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      
       {notification && (
         <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 text-white font-semibold ${
           notification.type === 'success' ? 'bg-green-600' : 'bg-red-600'
@@ -758,7 +802,9 @@ function App() {
 
           {!showHistory && !showSummary && !showConfig && !showInventory && (
             <>
-              <p className="text-center text-sm text-gray-500">Negocio ID: {currentBusinessId}</p>
+              <p className="text-center text-sm text-gray-500">
+                Negocio ID: {currentBusinessId} | Unidad: {activeTemplate.unidad}
+              </p>
 
               <div className="bg-white rounded-xl shadow-md p-4">
                 <div className="flex gap-2">
