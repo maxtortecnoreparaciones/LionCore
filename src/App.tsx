@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, businessTemplates, getCurrentBusinessId, setCurrentBusinessId, getCurrentBusinessTemplate } from './services/db'
+import { useState } from 'react'
+import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getTemplateByBusinessId } from './services/db'
 
 type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
 
@@ -120,42 +120,14 @@ const InvoicePreview = ({ mode, items, total, onClose }: { mode: Mode; items: It
 }
 
 function App() {
-  const [mode, setMode] = useState<Mode>('venta')
-  const [activeTemplate, setActiveTemplate] = useState(businessTemplates.pos)
-  const [currentBusinessId, setCurrentBusinessIdState] = useState(() => {
+  const currentBusinessId = (() => {
     const params = new URLSearchParams(window.location.search)
-    const id = Number(params.get("business")) || 1
-    console.log('📌 URL → business:', id)
-    return id
-  })
-  const [isLoading, setIsLoading] = useState(true)
-  const [debugInfo, setDebugInfo] = useState<{step: string, value: any}[]>([])
+    return Number(params.get("business")) || 1
+  })()
   
-  const addDebug = (step: string, value: any) => {
-    setDebugInfo(prev => [...prev, { step, value }])
-    console.log(`🔍 ${step}:`, value)
-  }
+  const activeTemplate = getTemplateByBusinessId(currentBusinessId)
   
-  useEffect(() => {
-    const initBusiness = async () => {
-      addDebug('1. URL businessId', currentBusinessId)
-      
-      setCurrentBusinessId(currentBusinessId)
-      setCurrentBusinessIdState(currentBusinessId)
-      
-      addDebug('2. setCurrentBusinessId', currentBusinessId)
-      
-      const template = await getCurrentBusinessTemplate(currentBusinessId)
-      addDebug('3. Template loaded', template)
-      
-      setActiveTemplate(template)
-      setIsLoading(false)
-      addDebug('4. Finished loading', 'OK')
-    }
-    
-    initBusiness()
-  }, [])
-  
+  const [mode, setMode] = useState<Mode>('venta')
   const [producto, setProducto] = useState('')
   const [cantidad, setCantidad] = useState<number>(1)
   const [precio, setPrecio] = useState<string>('')
@@ -369,11 +341,9 @@ function App() {
     setLoading(true)
 
     try {
-      const { getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getCurrentBusinessTemplate } = await import('./services/db')
+      const { getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta } = await import('./services/db')
 
       await getOrCreateDefaultBusiness()
-      const template = await getCurrentBusinessTemplate()
-      setActiveTemplate(template)
 
       const transactionItems = items.map(item => {
         const isProduction = mode === 'produccion'
@@ -383,7 +353,7 @@ function App() {
           quantity: kgQuantity,
           price: item.precio,
           subtotal: kgQuantity * item.precio,
-          costUnitario: isProduction && kgQuantity ? item.precio / kgQuantity : undefined,
+          costUnitario: isProduction ? item.precio / kgQuantity : undefined,
         }
       })
 
@@ -444,28 +414,6 @@ function App() {
 
   return (
     <>
-      {isLoading && (
-        <div className="fixed inset-0 bg-blue-600 flex items-center justify-center z-50">
-          <div className="text-white text-center">
-            <div className="text-2xl mb-4">Cargando negocio...</div>
-            <div className="text-sm opacity-75">Negocio ID: {currentBusinessId}</div>
-          </div>
-        </div>
-      )}
-      
-      {debugInfo.length > 0 && (
-        <div className="fixed bottom-4 right-4 bg-black/80 p-3 rounded-lg text-white text-xs max-w-xs z-50 overflow-auto max-h-48">
-          <div className="font-bold mb-2">🔍 Debug:</div>
-          {debugInfo.map((d, i) => (
-            <div key={i} className="mb-1">
-              <span className="text-yellow-400">{d.step}</span>
-              <span className="text-gray-400">: </span>
-              <span className="text-green-400">{JSON.stringify(d.value)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      
       {notification && (
         <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 text-white font-semibold ${
           notification.type === 'success' ? 'bg-green-600' : 'bg-red-600'
@@ -488,20 +436,6 @@ function App() {
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-gray-800">LionCore POS</h1>
             <div className="flex gap-2">
-              <select
-                value={getCurrentBusinessId()}
-                onChange={async (e) => {
-                  const id = Number(e.target.value)
-                  setCurrentBusinessId(id)
-                  const template = await getCurrentBusinessTemplate()
-                  setActiveTemplate(template)
-                  window.location.reload()
-                }}
-                className="px-3 py-2 border rounded-lg bg-white text-gray-800 font-semibold"
-              >
-                <option value={1}>Negocio 1 (POS)</option>
-                <option value={2}>Negocio 2 (Deshid)</option>
-              </select>
               <button
                 onClick={() => { setShowConfig(!showConfig); setShowSummary(false); setShowHistory(false); }}
                 className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
@@ -802,9 +736,7 @@ function App() {
 
           {!showHistory && !showSummary && !showConfig && !showInventory && (
             <>
-              <p className="text-center text-sm text-gray-500">
-                Negocio ID: {currentBusinessId} | Unidad: {activeTemplate.unidad}
-              </p>
+              <p className="text-center text-sm text-gray-500">Negocio ID: {currentBusinessId}</p>
 
               <div className="bg-white rounded-xl shadow-md p-4">
                 <div className="flex gap-2">
