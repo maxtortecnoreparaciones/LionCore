@@ -824,20 +824,22 @@ function App() {
                       </div>
                     )}
                   </div>
+                  {mode !== 'produccion' && (
+                    <input
+                      type="number"
+                      placeholder={`Cantidad (${activeTemplate.unidad})`}
+                      value={cantidad}
+                      onChange={(e) => setCantidad(Math.max(1, Number(e.target.value)))}
+                      min={1}
+                      onKeyPress={handleKeyPress}
+                      className={`w-20 py-3 px-3 text-center border rounded-lg focus:outline-none focus:ring-2 ${
+                        editingId ? 'border-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
+                      } focus:border-transparent`}
+                    />
+                  )}
                   <input
                     type="number"
-                    placeholder={(mode === 'produccion' && activeTemplate.unidad === 'kg') ? activeTemplate.unidad : 'Cant'}
-                    value={cantidad}
-                    onChange={(e) => setCantidad(Math.max(1, Number(e.target.value)))}
-                    min={1}
-                    onKeyPress={handleKeyPress}
-                    className={`w-20 py-3 px-3 text-center border rounded-lg focus:outline-none focus:ring-2 ${
-                      editingId ? 'border-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
-                    } focus:border-transparent`}
-                  />
-                  <input
-                    type="number"
-                    placeholder={mode === 'produccion' && activeTemplate.unidad === 'kg' ? 'Costo materia prima' : 'Precio'}
+                    placeholder={mode === 'produccion' ? 'Costo materia prima' : 'Precio'}
                     value={precio}
                     onChange={(e) => setPrecio(e.target.value)}
                     onKeyPress={handleKeyPress}
