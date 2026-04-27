@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, businessTemplates, getCurrentBusinessId, setCurrentBusinessId, getCurrentBusinessTemplate } from './services/db'
 
 type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
@@ -122,6 +122,17 @@ const InvoicePreview = ({ mode, items, total, onClose }: { mode: Mode; items: It
 function App() {
   const [mode, setMode] = useState<Mode>('venta')
   const [activeTemplate, setActiveTemplate] = useState(businessTemplates.pos)
+  const [currentBusinessId, setCurrentBusinessIdState] = useState(getCurrentBusinessId())
+  
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const businessId = Number(params.get("business")) || getCurrentBusinessId()
+    if (businessId && businessId !== getCurrentBusinessId()) {
+      setCurrentBusinessId(businessId)
+      setCurrentBusinessIdState(businessId)
+    }
+    getCurrentBusinessTemplate().then(setActiveTemplate)
+  }, [])
   const [producto, setProducto] = useState('')
   const [cantidad, setCantidad] = useState<number>(1)
   const [precio, setPrecio] = useState<string>('')
@@ -746,7 +757,7 @@ function App() {
 
           {!showHistory && !showSummary && !showConfig && !showInventory && (
             <>
-              <p className="text-center text-sm text-gray-500">Negocio ID: 1</p>
+              <p className="text-center text-sm text-gray-500">Negocio ID: {currentBusinessId}</p>
 
               <div className="bg-white rounded-xl shadow-md p-4">
                 <div className="flex gap-2">
@@ -836,7 +847,7 @@ function App() {
                   </div>
                   <input
                     type="number"
-                    placeholder={mode === 'produccion' ? 'kg' : 'Cant'}
+                    placeholder={(mode === 'produccion' && activeTemplate.unidad === 'kg') ? activeTemplate.unidad : 'Cant'}
                     value={cantidad}
                     onChange={(e) => setCantidad(Math.max(1, Number(e.target.value)))}
                     min={1}
@@ -847,7 +858,7 @@ function App() {
                   />
                   <input
                     type="number"
-                    placeholder={mode === 'produccion' ? 'Costo' : 'Precio'}
+                    placeholder={mode === 'produccion' && activeTemplate.unidad === 'kg' ? 'Costo materia prima' : 'Precio'}
                     value={precio}
                     onChange={(e) => setPrecio(e.target.value)}
                     onKeyPress={handleKeyPress}
