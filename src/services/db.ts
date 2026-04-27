@@ -114,9 +114,9 @@ export function setCurrentBusinessId(id: number): void {
   localStorage.setItem(BUSINESS_ID_KEY, id.toString())
 }
 
-export async function getCurrentBusinessTemplate() {
-  const businessId = getCurrentBusinessId()
-  const business = await db.businesses.get(businessId)
+export async function getCurrentBusinessTemplate(businessId?: number) {
+  const id = businessId || getCurrentBusinessId()
+  const business = await db.businesses.get(id)
   const tipo = business?.tipo || 'pos'
   return businessTemplates[tipo]
 }

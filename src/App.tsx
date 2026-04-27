@@ -126,12 +126,13 @@ function App() {
   
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    const businessId = Number(params.get("business")) || getCurrentBusinessId()
-    if (businessId && businessId !== getCurrentBusinessId()) {
-      setCurrentBusinessId(businessId)
-      setCurrentBusinessIdState(businessId)
-    }
-    getCurrentBusinessTemplate().then(setActiveTemplate)
+    const businessId = Number(params.get("business"))
+    const targetId = businessId || 1
+    
+    setCurrentBusinessId(targetId)
+    setCurrentBusinessIdState(targetId)
+    
+    getCurrentBusinessTemplate(targetId).then(setActiveTemplate)
   }, [])
   const [producto, setProducto] = useState('')
   const [cantidad, setCantidad] = useState<number>(1)
