@@ -377,13 +377,13 @@ function App() {
 
       const transactionItems = items.map(item => {
         const isProduction = mode === 'produccion'
-        const kgQuantity = isProduction && productionMeta.pesoEntrada ? Number(productionMeta.pesoEntrada) : item.cantidad
+        const kgQuantity = isProduction && productionMeta.pesoSalida ? Number(productionMeta.pesoSalida) : item.cantidad
         return {
           name: item.producto,
           quantity: kgQuantity,
           price: item.precio,
           subtotal: kgQuantity * item.precio,
-          costUnitario: isProduction ? item.precio / kgQuantity : undefined,
+          costUnitario: isProduction && kgQuantity ? item.precio / kgQuantity : undefined,
         }
       })
 
