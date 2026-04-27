@@ -31,6 +31,13 @@ export const businessTemplates: Record<BusinessType, {
   }
 }
 
+export function getTemplateByBusinessId(businessId: number) {
+  if (businessId === 2) {
+    return businessTemplates.deshidratados
+  }
+  return businessTemplates.pos
+}
+
 export interface Product {
   id?: number
   businessId: number
