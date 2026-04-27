@@ -153,7 +153,7 @@ function App() {
   const [loadingSummary, setLoadingSummary] = useState(false)
   const [showConfig, setShowConfig] = useState(false)
   const [showInventory, setShowInventory] = useState(false)
-  const [inventory, setInventory] = useState<{name: string; quantity: number; totalProduced: number; totalSold: number; lastPrice?: number}[]>([])
+  const [inventory, setInventory] = useState<{name: string; quantity: number; totalProduced: number; totalSold: number; lastPrice?: number; pesoEntrada?: number; pesoSalida?: number; tiempo?: number; notas?: string}[]>([])
   const [productSuggestions, setProductSuggestions] = useState<{name: string; stock: number; lastPrice?: number}[]>([])
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [editingPriceProduct, setEditingPriceProduct] = useState<string | null>(null)
@@ -679,6 +679,14 @@ function App() {
                         <p className="text-xs text-gray-400">
                           Producido: {item.totalProduced || 0} | Vendido: {item.totalSold || 0}
                         </p>
+                        {(item.pesoEntrada || item.pesoSalida || item.tiempo || item.notas) && (
+                          <div className="mt-1 text-xs text-purple-600 space-y-0.5">
+                            {item.pesoEntrada && <span>Kg entrada: {item.pesoEntrada} | </span>}
+                            {item.pesoSalida && <span>Kg salida: {item.pesoSalida} | </span>}
+                            {item.tiempo && <span>Tiempo: {item.tiempo} min</span>}
+                            {item.notas && <span className="block text-gray-500">Notas: {item.notas}</span>}
+                          </div>
+                        )}
                         <div className="flex items-center gap-2 mt-1">
                           {editingPriceProduct === item.name ? (
                             <div className="flex items-center gap-2">

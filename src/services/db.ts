@@ -348,6 +348,10 @@ export interface ProductStock {
   totalProduced: number
   totalSold: number
   lastPrice?: number
+  pesoEntrada?: number
+  pesoSalida?: number
+  tiempo?: number
+  notas?: string
 }
 
 export async function getStockByProduct(): Promise<ProductStock[]> {
@@ -360,17 +364,42 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
   
   const productionTxs = transactions.filter(t => t.type === 'produccion')
   const saleTxs = transactions.filter(t => t.type === 'venta')
+  const allMeta = await db.transaction_meta.toArray()
   
-  const stockMap = new Map<string, { produced: number; sold: number; lastProductionPrice?: number }>()
+  const stockMap = new Map<string, { 
+    produced: number; 
+    sold: number; 
+    lastProductionPrice?: number;
+    pesoEntrada?: number;
+    pesoSalida?: number;
+    tiempo?: number;
+    notas?: string;
+  }>()
   
   for (const tx of productionTxs) {
     const items = await db.transaction_items.where('transactionId').equals(tx.id!).toArray()
+    const txMeta = allMeta.filter(m => m.transactionId === tx.id)
+    
+    let pesoEntrada = 0, pesoSalida = 0, tiempo = 0
+    let notas = ''
+    
+    for (const m of txMeta) {
+      if (m.key === 'peso_entrada') pesoEntrada = Number(m.value)
+      if (m.key === 'peso_salida') pesoSalida = Number(m.value)
+      if (m.key === 'tiempo') tiempo = Number(m.value)
+      if (m.key === 'notas') notas = m.value as string
+    }
+    
     for (const item of items) {
       const current = stockMap.get(item.name) || { produced: 0, sold: 0 }
       stockMap.set(item.name, {
         produced: current.produced + item.quantity,
         sold: current.sold,
-        lastProductionPrice: item.price
+        lastProductionPrice: item.price,
+        pesoEntrada: pesoEntrada || (current.pesoEntrada || 0),
+        pesoSalida: pesoSalida || (current.pesoSalida || 0),
+        tiempo: tiempo || (current.tiempo || 0),
+        notas: notas || current.notas || ''
       })
     }
   }
@@ -382,7 +411,11 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
       stockMap.set(item.name, {
         produced: current.produced,
         sold: current.sold + item.quantity,
-        lastProductionPrice: current.lastProductionPrice
+        lastProductionPrice: current.lastProductionPrice,
+        pesoEntrada: current.pesoEntrada || 0,
+        pesoSalida: current.pesoSalida || 0,
+        tiempo: current.tiempo || 0,
+        notas: current.notas || ''
       })
     }
   }
@@ -392,7 +425,11 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
     quantity: data.produced - data.sold,
     totalProduced: data.produced,
     totalSold: data.sold,
-    lastPrice: data.lastProductionPrice
+    lastPrice: data.lastProductionPrice,
+    pesoEntrada: data.pesoEntrada,
+    pesoSalida: data.pesoSalida,
+    tiempo: data.tiempo,
+    notas: data.notas
   }))
 }
 
