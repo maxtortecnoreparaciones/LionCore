@@ -36,7 +36,7 @@ export const businessTemplates: Record<BusinessType, {
     emoji: '🥜',
   },
   restaurante: {
-    unidad: 'unidades',
+    unidad: 'porciones',
     showProduccion: false,
     showGastos: true,
     showCompra: true,
@@ -861,14 +861,14 @@ export async function getInventoryAdjustments(): Promise<InventoryAdjustment[]> 
 export function getInventoryMode(businessType: BusinessType): { showInventory: boolean; blockSales: boolean; allowNegative: boolean; label: string } {
   switch (businessType) {
     case 'pos':
-      return { showInventory: true, blockSales: false, allowNegative: true, label: 'Stock normal' }
+      return { showInventory: true, blockSales: false, allowNegative: true, label: 'Por unidades' }
     case 'restaurante':
-      return { showInventory: false, blockSales: false, allowNegative: true, label: 'Inventario oculto' }
+      return { showInventory: false, blockSales: false, allowNegative: true, label: 'Por porciones (oculto)' }
     case 'fruver':
-      return { showInventory: true, blockSales: false, allowNegative: true, label: 'Por peso (flexible)' }
+      return { showInventory: true, blockSales: false, allowNegative: true, label: 'Por kg (flexible)' }
     case 'deshidratados':
       return { showInventory: true, blockSales: false, allowNegative: false, label: 'Por kg' }
     default:
-      return { showInventory: true, blockSales: false, allowNegative: true, label: 'Stock normal' }
+      return { showInventory: true, blockSales: false, allowNegative: true, label: 'Por unidades' }
   }
 }
