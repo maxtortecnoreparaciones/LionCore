@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getTemplateByBusinessId, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId } from './services/db'
+import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, openMesa, addToMesa, closeMesa, removeItemFromMesa, resetAllMesas } from './services/db'
 import { getLicenseState, isFeatureAllowed, activateLicense, checkLicenseStatus, refreshLicenseCheck, getUpgradeMessage, getDeviceId, deactivateLicense, fetchSheetData } from './services/license'
 
 type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
@@ -126,8 +126,8 @@ function App() {
     return Number(params.get("business")) || 1
   })()
   
-  const activeTemplate = getTemplateByBusinessId(currentBusinessId)
   const [currentBusinessType, setCurrentBusinessType] = useState<BusinessType>('pos')
+  const currentTpl = businessTemplates[currentBusinessType] || businessTemplates.pos
   
   const [mode, setMode] = useState<Mode>('venta')
   const [producto, setProducto] = useState('')
@@ -189,6 +189,12 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [todayWow, setTodayWow] = useState<{ ventas: number; ganancia: number } | null>(null)
   const [loadingWow, setLoadingWow] = useState(false)
   const [isDemo, setIsDemo] = useState(false)
+  const [mesas, setMesas] = useState<Mesa[]>([])
+  const [selectedMesa, setSelectedMesa] = useState<Mesa | null>(null)
+  const [showMesaProductSelect, setShowMesaProductSelect] = useState(false)
+  const [mesaProductQty, setMesaProductQty] = useState(1)
+  const [mesaSelectedProduct, setMesaSelectedProduct] = useState('')
+  const [mesaSelectedPrice, setMesaSelectedPrice] = useState(0)
   const licenseState = getLicenseState()
   const licenseStatusCheck = checkLicenseStatus()
   
@@ -237,6 +243,18 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
       if (current) setCurrentBusinessType(current.tipo || 'pos')
     })
   }, [currentBusinessId])
+
+  useEffect(() => {
+    if (currentBusinessType === 'restaurante') {
+      getMesas().then(m => {
+        if (m.length === 0) {
+          resetAllMesas().then(() => getMesas().then(setMesas))
+        } else {
+          setMesas(m)
+        }
+      })
+    }
+  }, [currentBusinessId, currentBusinessType])
 
   const loadNetProfit = async () => {
     setLoadingNetProfit(true)
@@ -578,11 +596,12 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     }
   }
 
-const getAvailableModes = (): Mode[] => {
+ const getAvailableModes = (): Mode[] => {
+    const tpl = businessTemplates[currentBusinessType] || businessTemplates.pos
     const bases: Mode[] = ['venta']
-    if (activeTemplate.showCompra && isFeatureAllowed('compra')) bases.push('compra')
-    if (activeTemplate.showProduccion && isFeatureAllowed('produccion')) bases.push('produccion')
-    if (activeTemplate.showGastos && isFeatureAllowed('gastos')) bases.push('gasto')
+    if (tpl.showCompra && isFeatureAllowed('compra')) bases.push('compra')
+    if (tpl.showProduccion && isFeatureAllowed('produccion')) bases.push('produccion')
+    if (tpl.showGastos && isFeatureAllowed('gastos')) bases.push('gasto')
     return bases
   }
   
@@ -816,9 +835,195 @@ const getAvailableModes = (): Mode[] => {
                 </div>
               </div>
 
-              {currentBusinessType === 'restaurante' && isFeatureAllowed('compra') && (
-                <div className="bg-white rounded-xl shadow-md p-4 text-center">
-                  <p className="text-gray-500 text-sm">🍽️ Vista de mesas próximamente</p>
+              {currentBusinessType === 'restaurante' && (
+                <div className="bg-white rounded-2xl shadow-lg p-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-800">🍽️ Mesas</h2>
+                      <p className="text-sm text-gray-500">
+                        {mesas.filter(m => m.status === 'ocupada').length} ocupadas / {mesas.length} total
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => { resetAllMesas().then(() => getMesas().then(setMesas)); setSelectedMesa(null); }}
+                      className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-semibold hover:bg-gray-200"
+                    >
+                      🔄 Reset Mesas
+                    </button>
+                  </div>
+
+                  {!selectedMesa ? (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                      {mesas.map(mesa => {
+                        const statusColor = mesa.status === 'disponible' ? 'bg-green-100 border-green-300 text-green-700' :
+                          mesa.status === 'abierta' ? 'bg-blue-100 border-blue-300 text-blue-700' :
+                          mesa.status === 'ocupada' ? 'bg-orange-100 border-orange-300 text-orange-700' :
+                          'bg-purple-100 border-purple-300 text-purple-700'
+                        return (
+                          <button
+                            key={mesa.id}
+                            onClick={() => {
+                              if (mesa.status === 'disponible') {
+                                openMesa(mesa.id!).then(() => getMesas().then(m => {
+                                  setMesas(m)
+                                  setSelectedMesa(m.find(x => x.id === mesa.id)!)
+                                }))
+                              } else {
+                                getMesas().then(m => setSelectedMesa(m.find(x => x.id === mesa.id)!))
+                              }
+                            }}
+                            className={`p-4 rounded-xl border-2 text-center transition-all hover:shadow-md ${statusColor}`}
+                          >
+                            <p className="font-bold text-sm">{mesa.name}</p>
+                            <p className="text-xs mt-1 capitalize">{mesa.status}</p>
+                            {mesa.total > 0 && (
+                              <p className="text-xs font-bold mt-1">{formatCOP(mesa.total)}</p>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-bold text-gray-800">{selectedMesa.name}</h3>
+                        <button
+                          onClick={() => setSelectedMesa(null)}
+                          className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-semibold hover:bg-gray-200"
+                        >
+                          ← Volver a mesas
+                        </button>
+                      </div>
+
+                      {selectedMesa.orderItems.length > 0 ? (
+                        <div className="space-y-2 mb-4">
+                          {selectedMesa.orderItems.map((item, idx) => (
+                            <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                              <div className="flex-1">
+                                <p className="font-semibold text-sm">{item.name}</p>
+                                <p className="text-xs text-gray-500">{item.quantity} × {formatCOP(item.price)}</p>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <p className="font-bold text-sm">{formatCOP(item.subtotal)}</p>
+                                <button
+                                  onClick={() => {
+                                    removeItemFromMesa(selectedMesa.id!, idx).then(() => getMesas().then(m => {
+                                      setMesas(m)
+                                      setSelectedMesa(m.find(x => x.id === selectedMesa.id)!)
+                                    }))
+                                  }}
+                                  className="w-6 h-6 flex items-center justify-center rounded-full bg-red-100 text-red-500 hover:bg-red-200 text-xs"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-center text-gray-400 text-sm py-4">Sin productos</p>
+                      )}
+
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => setShowMesaProductSelect(true)}
+                          className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+                        >
+                          + Agregar producto
+                        </button>
+                        {selectedMesa.orderItems.length > 0 && (
+                          <button
+                            onClick={() => {
+                              closeMesa(selectedMesa.id!).then(() => {
+                                getMesas().then(m => {
+                                  setMesas(m)
+                                  setSelectedMesa(null)
+                                  loadTodayWow()
+                                  showNotification('success', `Mesa cobrada: ${formatCOP(selectedMesa.total)}`)
+                                })
+                              })
+                            }}
+                            className="py-3 px-6 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700"
+                          >
+                            💰 Cobrar {formatCOP(selectedMesa.total)}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {showMesaProductSelect && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
+                    <button
+                      onClick={() => { setShowMesaProductSelect(false); setMesaSelectedProduct(''); setMesaProductQty(1); }}
+                      className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors font-bold text-lg"
+                    >
+                      ✕
+                    </button>
+                    <h2 className="text-xl font-bold text-gray-800 mb-4">Agregar a {selectedMesa?.name}</h2>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Producto</label>
+                        <input
+                          type="text"
+                          value={mesaSelectedProduct}
+                          onChange={(e) => setMesaSelectedProduct(e.target.value)}
+                          placeholder="Nombre del producto"
+                          className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Cantidad</label>
+                          <input
+                            type="number"
+                            value={mesaProductQty}
+                            onChange={(e) => setMesaProductQty(Number(e.target.value))}
+                            min="1"
+                            className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Precio</label>
+                          <input
+                            type="number"
+                            value={mesaSelectedPrice}
+                            onChange={(e) => setMesaSelectedPrice(Number(e.target.value))}
+                            placeholder="0"
+                            className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          if (mesaSelectedProduct && mesaSelectedPrice > 0 && selectedMesa) {
+                            addToMesa(selectedMesa.id!, {
+                              name: mesaSelectedProduct,
+                              quantity: mesaProductQty,
+                              price: mesaSelectedPrice,
+                              subtotal: mesaProductQty * mesaSelectedPrice,
+                            }).then(() => getMesas().then(m => {
+                              setMesas(m)
+                              setSelectedMesa(m.find(x => x.id === selectedMesa.id)!)
+                              setShowMesaProductSelect(false)
+                              setMesaSelectedProduct('')
+                              setMesaProductQty(1)
+                              setMesaSelectedPrice(0)
+                            }))
+                          }
+                        }}
+                        disabled={!mesaSelectedProduct || mesaSelectedPrice <= 0}
+                        className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                      >
+                        Agregar
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </>
@@ -1096,8 +1301,8 @@ const getAvailableModes = (): Mode[] => {
                                 {item.quantity}
                               </span>
                             </div>
-                            {activeTemplate.unidad === 'kg' && item.quantity > 0 && (
-                              <div className="text-xs text-gray-400 text-right">{activeTemplate.unidad}</div>
+                            {currentTpl.unidad === 'kg' && item.quantity > 0 && (
+                              <div className="text-xs text-gray-400 text-right">{currentTpl.unidad}</div>
                             )}
                           </div>
                           
@@ -1230,7 +1435,7 @@ const getAvailableModes = (): Mode[] => {
                   {mode !== 'produccion' && (
                     <input
                       type="number"
-                      placeholder={`Cantidad (${activeTemplate.unidad})`}
+                      placeholder={`Cantidad (${currentTpl.unidad})`}
                       value={cantidad}
                       onChange={(e) => setCantidad(Math.max(1, Number(e.target.value)))}
                       min={1}

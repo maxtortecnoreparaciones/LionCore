@@ -60,6 +60,13 @@ export function getTemplateByBusinessId(businessId: number) {
   return businessTemplates.pos
 }
 
+export async function getActiveBusinessTemplate(): Promise<typeof businessTemplates['pos']> {
+  const businessId = getCurrentBusinessId()
+  const business = await db.businesses.get(businessId)
+  const tipo = business?.tipo || 'pos'
+  return businessTemplates[tipo]
+}
+
 export interface Product {
   id?: number
   businessId: number
@@ -97,6 +104,17 @@ export interface TransactionMeta {
   value: string | number
 }
 
+export interface Mesa {
+  id?: number
+  businessId: number
+  name: string
+  status: 'disponible' | 'abierta' | 'ocupada' | 'cuenta'
+  orderItems: { name: string; quantity: number; price: number; subtotal: number }[]
+  total: number
+  createdAt: Date
+  closedAt?: Date
+}
+
 // ==================== BASE DE DATOS ====================
 
 class LionCoreDB extends Dexie {
@@ -105,6 +123,7 @@ class LionCoreDB extends Dexie {
   transactions!: Table<Transaction, number>
   transaction_items!: Table<TransactionItem, number>
   transaction_meta!: Table<TransactionMeta, number>
+  mesas!: Table<Mesa, number>
 
   constructor() {
     super('LionCoreDB')
@@ -118,6 +137,12 @@ class LionCoreDB extends Dexie {
 
     this.version(2).stores({
       transaction_meta: '++id, transactionId, key',
+    }).upgrade(() => {
+      return Promise.resolve()
+    })
+
+    this.version(3).stores({
+      mesas: '++id, businessId, status',
     }).upgrade(() => {
       return Promise.resolve()
     })
@@ -683,5 +708,94 @@ export async function getNetProfitSummary(date: Date = new Date()): Promise<NetP
     gananciaNeta,
     margenPorcentaje,
     transaccionesCount: transactions.length,
+  }
+}
+
+// ==================== MESAS ====================
+
+export async function getMesas(): Promise<Mesa[]> {
+  const businessId = getCurrentBusinessId()
+  return db.mesas.where('businessId').equals(businessId).toArray()
+}
+
+export async function createMesa(name: string, count: number): Promise<number> {
+  const businessId = getCurrentBusinessId()
+  const id = await db.mesas.add({
+    businessId,
+    name: `${name} ${count}`,
+    status: 'disponible',
+    orderItems: [],
+    total: 0,
+    createdAt: new Date(),
+  })
+  return id
+}
+
+export async function openMesa(id: number): Promise<void> {
+  await db.mesas.update(id, { status: 'abierta', orderItems: [], total: 0 })
+}
+
+export async function addToMesa(mesaId: number, item: { name: string; quantity: number; price: number; subtotal: number }): Promise<void> {
+  const mesa = await db.mesas.get(mesaId)
+  if (!mesa) return
+
+  const existing = mesa.orderItems.find(o => o.name === item.name)
+  if (existing) {
+    existing.quantity += item.quantity
+    existing.subtotal = existing.quantity * existing.price
+  } else {
+    mesa.orderItems.push(item)
+  }
+
+  mesa.total = mesa.orderItems.reduce((sum, o) => sum + o.subtotal, 0)
+  mesa.status = 'ocupada'
+  await db.mesas.update(mesaId, { orderItems: mesa.orderItems, total: mesa.total, status: mesa.status })
+}
+
+export async function closeMesa(mesaId: number): Promise<void> {
+  const mesa = await db.mesas.get(mesaId)
+  if (!mesa || mesa.orderItems.length === 0) return
+
+  const transactionId = await db.transactions.add({
+    businessId: mesa.businessId,
+    type: 'venta',
+    total: mesa.total,
+    date: new Date(),
+  })
+
+  for (const item of mesa.orderItems) {
+    await db.transaction_items.add({
+      transactionId,
+      name: item.name,
+      quantity: item.quantity,
+      price: item.price,
+      subtotal: item.subtotal,
+    })
+  }
+
+  await db.mesas.update(mesaId, {
+    status: 'disponible',
+    orderItems: [],
+    total: 0,
+    closedAt: new Date(),
+  })
+}
+
+export async function removeItemFromMesa(mesaId: number, itemIndex: number): Promise<void> {
+  const mesa = await db.mesas.get(mesaId)
+  if (!mesa) return
+
+  mesa.orderItems.splice(itemIndex, 1)
+  mesa.total = mesa.orderItems.reduce((sum, o) => sum + o.subtotal, 0)
+  mesa.status = mesa.orderItems.length > 0 ? 'ocupada' : 'abierta'
+  await db.mesas.update(mesaId, { orderItems: mesa.orderItems, total: mesa.total, status: mesa.status })
+}
+
+export async function resetAllMesas(): Promise<void> {
+  const businessId = getCurrentBusinessId()
+  await db.mesas.where('businessId').equals(businessId).delete()
+
+  for (let i = 1; i <= 12; i++) {
+    await createMesa('Mesa', i)
   }
 }
