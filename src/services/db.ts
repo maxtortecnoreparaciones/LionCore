@@ -115,6 +115,22 @@ export interface Mesa {
   closedAt?: Date
 }
 
+export interface InventoryAdjustment {
+  id?: number
+  businessId: number
+  productName: string
+  quantity: number
+  reason: string
+  date: Date
+}
+
+export interface InventoryConfig {
+  sellWithoutStock: boolean
+  lowStockAlert: boolean
+  lowStockThreshold: number
+  allowNegative: boolean
+}
+
 // ==================== BASE DE DATOS ====================
 
 class LionCoreDB extends Dexie {
@@ -124,6 +140,7 @@ class LionCoreDB extends Dexie {
   transaction_items!: Table<TransactionItem, number>
   transaction_meta!: Table<TransactionMeta, number>
   mesas!: Table<Mesa, number>
+  inventory_adjustments!: Table<InventoryAdjustment, number>
 
   constructor() {
     super('LionCoreDB')
@@ -143,6 +160,10 @@ class LionCoreDB extends Dexie {
 
     this.version(3).stores({
       mesas: '++id, businessId, status',
+    })
+
+    this.version(4).stores({
+      inventory_adjustments: '++id, businessId, productName, date',
     })
   }
 }
@@ -795,5 +816,59 @@ export async function resetAllMesas(): Promise<void> {
 
   for (let i = 1; i <= 12; i++) {
     await createMesa('Mesa', i)
+  }
+}
+
+// ==================== INVENTARIO ====================
+
+const INV_CONFIG_KEY = 'invConfig'
+
+export function getInventoryConfig(): InventoryConfig {
+  const saved = localStorage.getItem(`${INV_CONFIG_KEY}_${getCurrentBusinessId()}`)
+  if (saved) {
+    try {
+      return JSON.parse(saved)
+    } catch {}
+  }
+  return {
+    sellWithoutStock: true,
+    lowStockAlert: true,
+    lowStockThreshold: 5,
+    allowNegative: true,
+  }
+}
+
+export function saveInventoryConfig(config: InventoryConfig): void {
+  localStorage.setItem(`${INV_CONFIG_KEY}_${getCurrentBusinessId()}`, JSON.stringify(config))
+}
+
+export async function adjustInventory(productName: string, quantity: number, reason: string): Promise<void> {
+  const businessId = getCurrentBusinessId()
+  await db.inventory_adjustments.add({
+    businessId,
+    productName,
+    quantity,
+    reason,
+    date: new Date(),
+  })
+}
+
+export async function getInventoryAdjustments(): Promise<InventoryAdjustment[]> {
+  const businessId = getCurrentBusinessId()
+  return db.inventory_adjustments.where('businessId').equals(businessId).reverse().sortBy('date')
+}
+
+export function getInventoryMode(businessType: BusinessType): { showInventory: boolean; blockSales: boolean; allowNegative: boolean; label: string } {
+  switch (businessType) {
+    case 'pos':
+      return { showInventory: true, blockSales: false, allowNegative: true, label: 'Stock normal' }
+    case 'restaurante':
+      return { showInventory: false, blockSales: false, allowNegative: true, label: 'Inventario oculto' }
+    case 'fruver':
+      return { showInventory: true, blockSales: false, allowNegative: true, label: 'Por peso (flexible)' }
+    case 'deshidratados':
+      return { showInventory: true, blockSales: false, allowNegative: false, label: 'Por kg' }
+    default:
+      return { showInventory: true, blockSales: false, allowNegative: true, label: 'Stock normal' }
   }
 }

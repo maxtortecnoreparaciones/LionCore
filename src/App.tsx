@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, updateBusinessType, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, openMesa, addToMesa, closeMesa, removeItemFromMesa, resetAllMesas } from './services/db'
+import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, updateBusinessType, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, openMesa, addToMesa, closeMesa, removeItemFromMesa, resetAllMesas, InventoryConfig, getInventoryConfig, saveInventoryConfig, adjustInventory, getInventoryMode } from './services/db'
 import { getLicenseState, isFeatureAllowed, activateLicense, checkLicenseStatus, refreshLicenseCheck, getUpgradeMessage, getDeviceId, deactivateLicense, fetchSheetData } from './services/license'
 
 type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
@@ -195,6 +195,11 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [mesaProductQty, setMesaProductQty] = useState(1)
   const [mesaSelectedProduct, setMesaSelectedProduct] = useState('')
   const [mesaSelectedPrice, setMesaSelectedPrice] = useState(0)
+  const [invConfig, setInvConfig] = useState<InventoryConfig>(() => getInventoryConfig())
+  const [showInvAdjustModal, setShowInvAdjustModal] = useState(false)
+  const [adjustProduct, setAdjustProduct] = useState('')
+  const [adjustQty, setAdjustQty] = useState(0)
+  const [adjustReason, setAdjustReason] = useState('')
   const licenseState = getLicenseState()
   const licenseStatusCheck = checkLicenseStatus()
   
@@ -241,18 +246,14 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
       setBusinesses(bizs)
       const current = bizs.find(b => b.id === currentBusinessId)
       if (current) setCurrentBusinessType(current.tipo || 'pos')
-      console.log('Businesses loaded:', JSON.stringify(bizs))
-      console.log('Current business type:', current?.tipo)
     })
+    setInvConfig(getInventoryConfig())
   }, [currentBusinessId])
 
   useEffect(() => {
     if (currentBusinessType === 'restaurante') {
-      console.log('Loading mesas for restaurant...')
       getMesas().then(m => {
-        console.log('Mesas loaded:', m.length, JSON.stringify(m))
         if (m.length === 0) {
-          console.log('No mesas found, creating 12...')
           resetAllMesas().then(() => getMesas().then(setMesas))
         } else {
           setMesas(m)
@@ -523,11 +524,17 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     }
 
     if (mode === 'venta') {
-      for (const item of items) {
-        const stock = await getProductStock(item.producto)
-        if (stock < item.cantidad) {
-          showNotification('error', `Stock insuficiente para "${item.producto}". Stock actual: ${stock}`)
-          return
+      const invConfig = getInventoryConfig()
+      const invMode = getInventoryMode(currentBusinessType)
+      const blockSales = !invConfig.sellWithoutStock && !invMode.allowNegative
+
+      if (blockSales) {
+        for (const item of items) {
+          const stock = await getProductStock(item.producto)
+          if (stock < item.cantidad) {
+            showNotification('error', `No tienes stock disponible para "${item.producto}". Stock actual: ${stock}`)
+            return
+          }
         }
       }
     }
@@ -1128,6 +1135,68 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                   + Nuevo Negocio
                 </button>
               </div>
+
+              {getInventoryMode(currentBusinessType).showInventory && (
+                <div className="mb-6 p-4 bg-gray-50 rounded-xl">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-semibold text-gray-700">📦 Inventario</h3>
+                    <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">{currentTpl.label}</span>
+                  </div>
+                  <div className="space-y-3">
+                    <label className="flex items-center justify-between p-3 bg-white rounded-lg border cursor-pointer">
+                      <div>
+                        <p className="font-semibold text-sm">Permitir vender sin stock</p>
+                        <p className="text-xs text-gray-500">No bloquear ventas si el inventario está en 0</p>
+                      </div>
+                      <div className={`w-12 h-6 rounded-full transition-all ${invConfig.sellWithoutStock ? 'bg-green-500' : 'bg-gray-300'}`}
+                        onClick={() => { setInvConfig({ ...invConfig, sellWithoutStock: !invConfig.sellWithoutStock }); saveInventoryConfig({ ...invConfig, sellWithoutStock: !invConfig.sellWithoutStock }); }}
+                      >
+                        <div className={`w-5 h-5 bg-white rounded-full shadow-md transition-all mt-0.5 ${invConfig.sellWithoutStock ? 'ml-6' : 'ml-0.5'}`} />
+                      </div>
+                    </label>
+                    <label className="flex items-center justify-between p-3 bg-white rounded-lg border cursor-pointer">
+                      <div>
+                        <p className="font-semibold text-sm">Alerta de stock bajo</p>
+                        <p className="text-xs text-gray-500">Avisar cuando un producto tenga poco stock</p>
+                      </div>
+                      <div className={`w-12 h-6 rounded-full transition-all ${invConfig.lowStockAlert ? 'bg-green-500' : 'bg-gray-300'}`}
+                        onClick={() => { setInvConfig({ ...invConfig, lowStockAlert: !invConfig.lowStockAlert }); saveInventoryConfig({ ...invConfig, lowStockAlert: !invConfig.lowStockAlert }); }}
+                      >
+                        <div className={`w-5 h-5 bg-white rounded-full shadow-md transition-all mt-0.5 ${invConfig.lowStockAlert ? 'ml-6' : 'ml-0.5'}`} />
+                      </div>
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Mínimo para alerta</label>
+                        <input
+                          type="number"
+                          value={invConfig.lowStockThreshold}
+                          onChange={(e) => { setInvConfig({ ...invConfig, lowStockThreshold: Number(e.target.value) }); saveInventoryConfig({ ...invConfig, lowStockThreshold: Number(e.target.value) }); }}
+                          min="1"
+                          className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Permitir negativo</label>
+                        <select
+                          value={invConfig.allowNegative ? 'true' : 'false'}
+                          onChange={(e) => { setInvConfig({ ...invConfig, allowNegative: e.target.value === 'true' }); saveInventoryConfig({ ...invConfig, allowNegative: e.target.value === 'true' }); }}
+                          className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="true">Sí</option>
+                          <option value="false">No</option>
+                        </select>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowInvAdjustModal(true)}
+                      className="w-full py-2 px-4 bg-amber-500 text-white rounded-lg font-semibold hover:bg-amber-600 text-sm"
+                    >
+                      ✏️ Ajustar inventario manual
+                    </button>
+                  </div>
+                </div>
+              )}
               
               <h3 className="font-bold text-gray-800 mb-3">Configuración de Costos</h3>
               <p className="text-sm text-gray-500 mb-4">Configura los costos fijos para calcular el precio de venta en producción.</p>
@@ -1333,9 +1402,14 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                             <h3 className="font-bold text-gray-800 text-sm truncate flex-1" title={item.name}>
                               {item.name}
                             </h3>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${item.quantity > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                              {item.quantity > 0 ? '✓' : '✗'}
-                            </span>
+                            <div className="flex gap-1">
+                              {invConfig.lowStockAlert && item.quantity <= invConfig.lowStockThreshold && item.quantity > 0 && (
+                                <span className="text-xs px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700" title="Stock bajo">⚠️</span>
+                              )}
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${item.quantity > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                                {item.quantity > 0 ? '✓' : '✗'}
+                              </span>
+                            </div>
                           </div>
                           
                           <div className="space-y-1 mb-3">
@@ -2019,6 +2093,83 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                       Desactivar
                     </button>
                   )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showInvAdjustModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
+                <button
+                  onClick={() => { setShowInvAdjustModal(false); setAdjustProduct(''); setAdjustQty(0); setAdjustReason(''); }}
+                  className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors font-bold text-lg"
+                >
+                  ✕
+                </button>
+                <div className="text-center mb-6">
+                  <div className="text-4xl mb-2">📦</div>
+                  <h2 className="text-2xl font-bold text-gray-800">Ajustar Inventario</h2>
+                  <p className="text-sm text-gray-500 mt-1">Ajusta tu inventario sin complicaciones</p>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Producto</label>
+                    <input
+                      type="text"
+                      value={adjustProduct}
+                      onChange={(e) => setAdjustProduct(e.target.value)}
+                      placeholder="Nombre del producto"
+                      className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Cantidad (+ o -)</label>
+                    <input
+                      type="number"
+                      value={adjustQty}
+                      onChange={(e) => setAdjustQty(Number(e.target.value))}
+                      placeholder="Ej: 10 o -5"
+                      className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Motivo</label>
+                    <select
+                      value={adjustReason}
+                      onChange={(e) => setAdjustReason(e.target.value)}
+                      className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Seleccionar...</option>
+                      <option value="ajuste">Ajuste de inventario</option>
+                      <option value="perdida">Pérdida / Merma</option>
+                      <option value="robo">Robo</option>
+                      <option value="entrada">Entrada manual</option>
+                      <option value="otro">Otro</option>
+                    </select>
+                  </div>
+                  
+                  <button
+                    onClick={() => {
+                      if (adjustProduct && adjustQty !== 0 && adjustReason) {
+                        adjustInventory(adjustProduct, adjustQty, adjustReason)
+                          .then(() => {
+                            showNotification('success', `Inventario ajustado: ${adjustProduct} (${adjustQty > 0 ? '+' : ''}${adjustQty})`)
+                            setShowInvAdjustModal(false)
+                            setAdjustProduct('')
+                            setAdjustQty(0)
+                            setAdjustReason('')
+                            if (showInventory) getStockByProduct().then(setInventory)
+                          })
+                          .catch((e) => showNotification('error', e.message))
+                      }
+                    }}
+                    disabled={!adjustProduct || adjustQty === 0 || !adjustReason}
+                    className="w-full py-3 px-4 bg-amber-500 text-white rounded-lg font-semibold hover:bg-amber-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    Guardar Ajuste
+                  </button>
                 </div>
               </div>
             </div>
