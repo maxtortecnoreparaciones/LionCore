@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, openMesa, addToMesa, closeMesa, removeItemFromMesa, resetAllMesas } from './services/db'
+import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, updateBusinessType, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, openMesa, addToMesa, closeMesa, removeItemFromMesa, resetAllMesas } from './services/db'
 import { getLicenseState, isFeatureAllowed, activateLicense, checkLicenseStatus, refreshLicenseCheck, getUpgradeMessage, getDeviceId, deactivateLicense, fetchSheetData } from './services/license'
 
 type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
@@ -1042,37 +1042,66 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                     return (
                       <div
                         key={b.id}
-                        className={`flex items-center justify-between p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                        className={`p-3 rounded-lg border-2 transition-all ${
                           isActive ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
                         }`}
-                        onClick={() => {
-                          setCurrentBusinessId(b.id!)
-                          window.location.reload()
-                        }}
                       >
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl">{tpl.emoji}</span>
-                          <div>
-                            <p className="font-semibold text-sm">{b.name}</p>
-                            <p className="text-xs text-gray-500">{tpl.label} • {tpl.unidad}</p>
+                        <div className="flex items-center justify-between mb-2">
+                          <div
+                            className="flex items-center gap-2 cursor-pointer flex-1"
+                            onClick={() => {
+                              setCurrentBusinessId(b.id!)
+                              window.location.reload()
+                            }}
+                          >
+                            <span className="text-xl">{tpl.emoji}</span>
+                            <div>
+                              <p className="font-semibold text-sm">{b.name}</p>
+                              <p className="text-xs text-gray-500">{tpl.label} • {tpl.unidad}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {isActive && <span className="text-xs bg-blue-500 text-white px-2 py-1 rounded-full">Activo</span>}
+                            {businesses.length > 1 && (
+                              <button
+                                onClick={() => {
+                                  if (confirm(`¿Eliminar "${b.name}"?`)) {
+                                    deleteBusiness(b.id!).then(() => window.location.reload())
+                                  }
+                                }}
+                                className="w-6 h-6 flex items-center justify-center rounded-full bg-red-100 text-red-500 hover:bg-red-200 text-xs"
+                              >
+                                ✕
+                              </button>
+                            )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {isActive && <span className="text-xs bg-blue-500 text-white px-2 py-1 rounded-full">Activo</span>}
-                          {businesses.length > 1 && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                if (confirm(`¿Eliminar "${b.name}"?`)) {
-                                  deleteBusiness(b.id!).then(() => window.location.reload())
-                                }
-                              }}
-                              className="w-6 h-6 flex items-center justify-center rounded-full bg-red-100 text-red-500 hover:bg-red-200 text-xs"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
+                        {isActive && (
+                          <div className="mt-2 pt-2 border-t border-gray-200">
+                            <p className="text-xs text-gray-500 mb-1">Cambiar tipo de negocio:</p>
+                            <div className="flex gap-1.5 flex-wrap">
+                              {(Object.keys(businessTemplates) as BusinessType[]).map(tipo => {
+                                const t = businessTemplates[tipo]
+                                const isSelected = b.tipo === tipo
+                                return (
+                                  <button
+                                    key={tipo}
+                                    onClick={() => {
+                                      updateBusinessType(b.id!, tipo).then(() => window.location.reload())
+                                    }}
+                                    className={`px-2 py-1 rounded-md text-xs font-semibold transition-all ${
+                                      isSelected
+                                        ? 'bg-blue-600 text-white'
+                                        : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300'
+                                    }`}
+                                  >
+                                    {t.emoji} {t.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )
                   })}

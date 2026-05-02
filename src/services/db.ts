@@ -204,13 +204,11 @@ export async function getAllBusinesses(): Promise<Business[]> {
 }
 
 export async function createBusiness(name: string, tipo: BusinessType = 'pos'): Promise<number> {
-  console.log('Creating business:', name, tipo)
   const id = await db.businesses.add({
     name,
     tipo,
     createdAt: new Date(),
   })
-  console.log('Business created with id:', id)
   return id
 }
 
