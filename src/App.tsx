@@ -127,6 +127,7 @@ function App() {
   })()
   
   const activeTemplate = getTemplateByBusinessId(currentBusinessId)
+  const [currentBusinessType, setCurrentBusinessType] = useState<BusinessType>('pos')
   
   const [mode, setMode] = useState<Mode>('venta')
   const [producto, setProducto] = useState('')
@@ -185,6 +186,9 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [netProfit, setNetProfit] = useState<NetProfitSummary | null>(null)
   const [loadingNetProfit, setLoadingNetProfit] = useState(false)
   const [licenseDebug, setLicenseDebug] = useState<string>('')
+  const [todayWow, setTodayWow] = useState<{ ventas: number; ganancia: number } | null>(null)
+  const [loadingWow, setLoadingWow] = useState(false)
+  const [isDemo, setIsDemo] = useState(false)
   const licenseState = getLicenseState()
   const licenseStatusCheck = checkLicenseStatus()
   
@@ -227,7 +231,11 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   }, [businessConfig, currentBusinessId])
 
   useEffect(() => {
-    getAllBusinesses().then(setBusinesses)
+    getAllBusinesses().then(bizs => {
+      setBusinesses(bizs)
+      const current = bizs.find(b => b.id === currentBusinessId)
+      if (current) setCurrentBusinessType(current.tipo || 'pos')
+    })
   }, [currentBusinessId])
 
   const loadNetProfit = async () => {
@@ -240,6 +248,114 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     } finally {
       setLoadingNetProfit(false)
     }
+  }
+
+  const loadTodayWow = async () => {
+    setLoadingWow(true)
+    try {
+      const data = await getNetProfitSummary()
+      setTodayWow({ ventas: data.ventasTotales, ganancia: data.gananciaNeta })
+    } catch (error) {
+      console.error('Error loading today wow:', error)
+    } finally {
+      setLoadingWow(false)
+    }
+  }
+
+  useEffect(() => {
+    loadTodayWow()
+  }, [currentBusinessId])
+
+  const loadDemoData = async () => {
+    setIsDemo(true)
+    await getOrCreateDefaultBusiness()
+
+    const demoProducts = [
+      { name: 'Pollo Deshidratado', price: 35000, cost: 18000 },
+      { name: 'Chuleta Deshidratada', price: 42000, cost: 22000 },
+      { name: 'Carne Seca', price: 38000, cost: 20000 },
+      { name: 'Mango Deshidratado', price: 25000, cost: 12000 },
+      { name: 'Banano Chips', price: 15000, cost: 7000 },
+    ]
+
+    const productIds: number[] = []
+    for (const p of demoProducts) {
+      try {
+        const id = await db.products.add({
+          businessId: currentBusinessId,
+          name: p.name,
+          price: p.price,
+          cost: p.cost,
+          createdAt: new Date(),
+        })
+        productIds.push(id)
+      } catch {}
+    }
+
+    const now = new Date()
+    const todayStart = new Date(now)
+    todayStart.setHours(8, 0, 0, 0)
+
+    const demoSales = [
+      { productId: 0, qty: 3, timeOffset: 30 },
+      { productId: 1, qty: 2, timeOffset: 75 },
+      { productId: 3, qty: 5, timeOffset: 120 },
+      { productId: 4, qty: 8, timeOffset: 180 },
+      { productId: 0, qty: 2, timeOffset: 240 },
+    ]
+
+    for (const sale of demoSales) {
+      const saleDate = new Date(todayStart.getTime() + sale.timeOffset * 60000)
+      const product = demoProducts[sale.productId]
+      const txId = await db.transactions.add({
+        businessId: currentBusinessId,
+        type: 'venta',
+        total: product.price * sale.qty,
+        date: saleDate,
+      })
+      await db.transaction_items.add({
+        transactionId: txId,
+        productId: productIds[sale.productId],
+        name: product.name,
+        quantity: sale.qty,
+        price: product.price,
+        subtotal: product.price * sale.qty,
+        costUnitario: product.cost,
+      })
+    }
+
+    const expenseDate = new Date(todayStart.getTime() + 60 * 60000)
+    const expenseTxId = await db.transactions.add({
+      businessId: currentBusinessId,
+      type: 'gasto',
+      total: 25000,
+      date: expenseDate,
+    })
+    await db.transaction_items.add({
+      transactionId: expenseTxId,
+      name: 'Transporte',
+      quantity: 1,
+      price: 25000,
+      subtotal: 25000,
+    })
+
+    await loadTodayWow()
+    showNotification('success', '🎯 Demo cargada — 5 ventas, 1 gasto')
+  }
+
+  const resetDemoData = async () => {
+    setIsDemo(false)
+    const businessId = currentBusinessId
+    const txs = await db.transactions.where('businessId').equals(businessId).toArray()
+    for (const tx of txs) {
+      await db.transaction_items.where('transactionId').equals(tx.id!).delete()
+      await db.transaction_meta.where('transactionId').equals(tx.id!).delete()
+      await db.transactions.delete(tx.id!)
+    }
+    await db.products.where('businessId').equals(businessId).delete()
+    setTodayWow(null)
+    await loadTodayWow()
+    showNotification('success', 'Datos reseteados')
   }
 
   const total = items.reduce((sum, item) => sum + item.cantidad * item.precio, 0)
@@ -653,6 +769,60 @@ const getAvailableModes = (): Mode[] => {
               )}
             </div>
           </div>
+
+          {!showConfig && !showSummary && !showHistory && !showInventory && (
+            <>
+              <div className="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-emerald-500">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-500 font-medium uppercase tracking-wide">Hoy vendiste</p>
+                    <p className="text-4xl font-black text-gray-800 mt-1">
+                      {loadingWow ? '...' : formatCOP(todayWow?.ventas || 0)}
+                    </p>
+                  </div>
+                  <div className="flex-1 text-right border-l border-gray-200 pl-6">
+                    <p className="text-sm text-gray-500 font-medium uppercase tracking-wide">Hoy ganaste 🔥</p>
+                    <p className={`text-4xl font-black mt-1 ${((todayWow?.ganancia || 0) >= 0) ? 'text-emerald-600' : 'text-red-600'}`}>
+                      {loadingWow ? '...' : formatCOP(todayWow?.ganancia || 0)}
+                    </p>
+                    {todayWow && (todayWow.ventas > 0) && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        Esto es lo que realmente te queda en el bolsillo
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-4 flex gap-2 justify-between items-center">
+                  <p className="text-xs text-gray-400">
+                    {!todayWow || todayWow.ventas === 0 ? 'Registra tu primera venta para ver tus números' : 'Actualizado en tiempo real'}
+                  </p>
+                  <div className="flex gap-2">
+                    {!isDemo ? (
+                      <button
+                        onClick={loadDemoData}
+                        className="px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg text-xs font-semibold hover:bg-purple-200"
+                      >
+                        🎯 Modo Demo
+                      </button>
+                    ) : (
+                      <button
+                        onClick={resetDemoData}
+                        className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-semibold hover:bg-red-200"
+                      >
+                        🗑️ Reset Demo
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {currentBusinessType === 'restaurante' && isFeatureAllowed('compra') && (
+                <div className="bg-white rounded-xl shadow-md p-4 text-center">
+                  <p className="text-gray-500 text-sm">🍽️ Vista de mesas próximamente</p>
+                </div>
+              )}
+            </>
+          )}
 
           {showConfig && (
             <div className="bg-white rounded-xl shadow-md p-4">
