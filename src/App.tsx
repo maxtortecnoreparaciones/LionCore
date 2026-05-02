@@ -241,13 +241,18 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
       setBusinesses(bizs)
       const current = bizs.find(b => b.id === currentBusinessId)
       if (current) setCurrentBusinessType(current.tipo || 'pos')
+      console.log('Businesses loaded:', JSON.stringify(bizs))
+      console.log('Current business type:', current?.tipo)
     })
   }, [currentBusinessId])
 
   useEffect(() => {
     if (currentBusinessType === 'restaurante') {
+      console.log('Loading mesas for restaurant...')
       getMesas().then(m => {
+        console.log('Mesas loaded:', m.length, JSON.stringify(m))
         if (m.length === 0) {
+          console.log('No mesas found, creating 12...')
           resetAllMesas().then(() => getMesas().then(setMesas))
         } else {
           setMesas(m)
@@ -671,6 +676,9 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                   FREE
                 </span>
               )}
+              <span className="text-xs px-2 py-1 rounded-full font-semibold bg-gray-100 text-gray-600" title="Tipo de negocio activo">
+                {currentTpl.emoji} {currentTpl.label}
+              </span>
             </div>
             <div className="flex gap-2">
               <button
@@ -844,12 +852,15 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                         {mesas.filter(m => m.status === 'ocupada').length} ocupadas / {mesas.length} total
                       </p>
                     </div>
-                    <button
-                      onClick={() => { resetAllMesas().then(() => getMesas().then(setMesas)); setSelectedMesa(null); }}
-                      className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-semibold hover:bg-gray-200"
-                    >
-                      🔄 Reset Mesas
-                    </button>
+                    <div className="flex gap-2">
+                      <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded">Tipo: {currentBusinessType}</span>
+                      <button
+                        onClick={() => { resetAllMesas().then(() => getMesas().then(setMesas)); setSelectedMesa(null); }}
+                        className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-semibold hover:bg-gray-200"
+                      >
+                        🔄 Reset Mesas
+                      </button>
+                    </div>
                   </div>
 
                   {!selectedMesa ? (
