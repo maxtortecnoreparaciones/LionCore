@@ -2,7 +2,7 @@ import Dexie, { Table } from 'dexie'
 
 // ==================== TIPOS ====================
 
-export type BusinessType = 'pos' | 'deshidratados'
+export type BusinessType = 'pos' | 'deshidratados' | 'restaurante' | 'fruver'
 
 export interface Business {
   id?: number
@@ -16,19 +16,41 @@ export const businessTemplates: Record<BusinessType, {
   showProduccion: boolean
   showGastos: boolean
   showCompra: boolean
+  label: string
+  emoji: string
 }> = {
   pos: {
     unidad: 'unidades',
     showProduccion: true,
     showGastos: true,
-    showCompra: true
+    showCompra: true,
+    label: 'Tienda / POS',
+    emoji: '🏪',
   },
   deshidratados: {
     unidad: 'kg',
     showProduccion: true,
     showGastos: true,
-    showCompra: true
-  }
+    showCompra: true,
+    label: 'Deshidratados',
+    emoji: '🥜',
+  },
+  restaurante: {
+    unidad: 'unidades',
+    showProduccion: false,
+    showGastos: true,
+    showCompra: true,
+    label: 'Restaurante',
+    emoji: '🍽️',
+  },
+  fruver: {
+    unidad: 'kg',
+    showProduccion: false,
+    showGastos: true,
+    showCompra: true,
+    label: 'Fruver',
+    emoji: '🥬',
+  },
 }
 
 export function getTemplateByBusinessId(businessId: number) {
@@ -138,9 +160,9 @@ export async function getCurrentBusinessTemplate(businessId?: number) {
 }
 
 export async function getOrCreateDefaultBusiness(): Promise<Business> {
-  const business = await db.businesses.get(1)
+  const all = await db.businesses.toArray()
   
-  if (business) return business
+  if (all.length > 0) return all[0]
   
   const newBusiness: Business = {
     name: 'Mi Negocio',
@@ -152,6 +174,34 @@ export async function getOrCreateDefaultBusiness(): Promise<Business> {
   setCurrentBusinessId(id)
   
   return { ...newBusiness, id }
+}
+
+export async function getAllBusinesses(): Promise<Business[]> {
+  return db.businesses.toArray()
+}
+
+export async function createBusiness(name: string, tipo: BusinessType = 'pos'): Promise<number> {
+  const id = await db.businesses.add({
+    name,
+    tipo,
+    createdAt: new Date(),
+  })
+  return id
+}
+
+export async function updateBusinessType(id: number, tipo: BusinessType): Promise<void> {
+  await db.businesses.update(id, { tipo })
+}
+
+export async function deleteBusiness(id: number): Promise<void> {
+  await db.businesses.delete(id)
+  const current = getCurrentBusinessId()
+  if (current === id) {
+    const remaining = await db.businesses.toArray()
+    if (remaining.length > 0) {
+      setCurrentBusinessId(remaining[0].id!)
+    }
+  }
 }
 
 // ==================== OPERACIONES ====================
@@ -566,5 +616,72 @@ export function calculateProductionCost(
       fijo: costoFijo,
       ganancia: precioVenta - costoTotal,
     }
+  }
+}
+
+export interface NetProfitSummary {
+  ventasTotales: number
+  costoProductosVendidos: number
+  gananciaBruta: number
+  gastosOperativos: number
+  comprasMateriaPrima: number
+  gananciaNeta: number
+  margenPorcentaje: number
+  transaccionesCount: number
+}
+
+export async function getNetProfitSummary(date: Date = new Date()): Promise<NetProfitSummary> {
+  const businessId = getCurrentBusinessId()
+  const startOfDay = new Date(date)
+  startOfDay.setHours(0, 0, 0, 0)
+  const endOfDay = new Date(date)
+  endOfDay.setHours(23, 59, 59, 999)
+
+  const transactions = await db.transactions
+    .where('businessId')
+    .equals(businessId)
+    .filter(t => t.date >= startOfDay && t.date <= endOfDay)
+    .toArray()
+
+  const ventas = transactions.filter(t => t.type === 'venta')
+  const ventasTotales = ventas.reduce((sum, t) => sum + t.total, 0)
+
+  let costoProductosVendidos = 0
+  for (const tx of ventas) {
+    const items = await db.transaction_items.where('transactionId').equals(tx.id!).toArray()
+    for (const item of items) {
+      if (item.costUnitario && item.costUnitario > 0) {
+        costoProductosVendidos += item.costUnitario * item.quantity
+      } else if (item.productId) {
+        const product = await db.products.get(item.productId)
+        if (product && product.cost && product.cost > 0) {
+          costoProductosVendidos += product.cost * item.quantity
+        }
+      }
+    }
+  }
+
+  const gananciaBruta = ventasTotales - costoProductosVendidos
+
+  const gastosOperativos = transactions
+    .filter(t => t.type === 'gasto')
+    .reduce((sum, t) => sum + t.total, 0)
+
+  const comprasMateriaPrima = transactions
+    .filter(t => t.type === 'compra')
+    .reduce((sum, t) => sum + t.total, 0)
+
+  const gananciaNeta = gananciaBruta - gastosOperativos - comprasMateriaPrima
+  const margenPorcentaje = ventasTotales > 0 ? (gananciaNeta / ventasTotales) * 100 : 0
+
+  return {
+    ventasTotales,
+    costoProductosVendidos,
+    gananciaBruta,
+    gastosOperativos,
+    comprasMateriaPrima,
+    gananciaNeta,
+    margenPorcentaje,
+    transaccionesCount: transactions.length,
   }
 }

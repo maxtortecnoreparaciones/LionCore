@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getTemplateByBusinessId } from './services/db'
+import { useState, useEffect } from 'react'
+import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getTemplateByBusinessId, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId } from './services/db'
+import { getLicenseState, isFeatureAllowed, activateLicense, checkLicenseStatus, refreshLicenseCheck, getUpgradeMessage, getDeviceId, deactivateLicense, fetchSheetData } from './services/license'
 
 type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
 
@@ -146,7 +147,7 @@ function App() {
     tiempo: '',
     notas: '',
   })
-  const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
+const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [summaryPeriod, setSummaryPeriod] = useState<'diario' | 'semanal' | 'mensual'>('diario')
   const [summary, setSummary] = useState<FinancialSummary | null>(null)
@@ -156,16 +157,90 @@ function App() {
   const [inventory, setInventory] = useState<{name: string; quantity: number; totalProduced: number; totalSold: number; lastPrice?: number; pesoEntrada?: number; pesoSalida?: number; tiempo?: number; notas?: string}[]>([])
   const [productSuggestions, setProductSuggestions] = useState<{name: string; stock: number; lastPrice?: number}[]>([])
   const [showProductDropdown, setShowProductDropdown] = useState(false)
-  const [editingPriceProduct, setEditingPriceProduct] = useState<string | null>(null)
-  const [editingPriceValue, setEditingPriceValue] = useState('')
-  const [businessConfig, setBusinessConfig] = useState({
-    costoManoObra: '',
-    costoEnergia: '',
-    costoEmpaque: '',
-    costoTransporte: '',
-    porcentajeGanancia: '30',
+  const [inventorySearch, setInventorySearch] = useState('')
+  const [businessConfig, setBusinessConfig] = useState(() => {
+    const saved = localStorage.getItem(`costConfig_${currentBusinessId}`)
+    return saved
+      ? JSON.parse(saved)
+      : {
+          costoManoObra: '',
+          costoEnergia: '',
+          costoEmpaque: '',
+          costoTransporte: '',
+          porcentajeGanancia: '30',
+        }
   })
   const [configSaved, setConfigSaved] = useState(false)
+  const [showLicenseModal, setShowLicenseModal] = useState(false)
+  const [licenseEmail, setLicenseEmail] = useState('')
+  const [licenseStatus, setLicenseStatus] = useState<{ success: boolean; message: string } | null>(null)
+  const [showUpgradeModal, setShowUpgradeModal] = useState<{ title: string; message: string } | null>(null)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [showDeviceModal, setShowDeviceModal] = useState(false)
+  const [debugShow, setDebugShow] = useState(false)
+  const [businesses, setBusinesses] = useState<Business[]>([])
+  const [showNewBusinessModal, setShowNewBusinessModal] = useState(false)
+  const [newBusinessName, setNewBusinessName] = useState('')
+  const [newBusinessType, setNewBusinessType] = useState<BusinessType>('pos')
+  const [netProfit, setNetProfit] = useState<NetProfitSummary | null>(null)
+  const [loadingNetProfit, setLoadingNetProfit] = useState(false)
+  const [licenseDebug, setLicenseDebug] = useState<string>('')
+  const licenseState = getLicenseState()
+  const licenseStatusCheck = checkLicenseStatus()
+  
+  useEffect(() => {
+    console.log('🔍 Estado de licencia:', JSON.stringify(licenseState))
+    console.log('🔍 Check status:', licenseStatusCheck)
+    console.log('🔍 isActivated:', licenseState.isActivated)
+    console.log('🔍 plan:', licenseState.plan)
+    console.log('🔍 Modos disponibles:', getAvailableModes())
+    
+    if (licenseState.isActivated) {
+      refreshLicenseCheck().then(result => {
+        if (!result.success) {
+          showNotification('error', result.message)
+        }
+      })
+    }
+    if (licenseState.isActivated && licenseStatusCheck.daysLeft >= 0 && licenseStatusCheck.daysLeft <= 7) {
+      showNotification('error', `Tu licencia expira en ${licenseStatusCheck.daysLeft} días`)
+    }
+    if (licenseState.isActivated && licenseStatusCheck.isExpired) {
+      showNotification('error', 'Tu licencia ha expirado')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!licenseState.isActivated) return
+    const interval = setInterval(() => {
+      refreshLicenseCheck().then(result => {
+        if (!result.success) {
+          showNotification('error', result.message)
+        }
+      })
+    }, 30 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [licenseState.isActivated])
+
+  useEffect(() => {
+    localStorage.setItem(`costConfig_${currentBusinessId}`, JSON.stringify(businessConfig))
+  }, [businessConfig, currentBusinessId])
+
+  useEffect(() => {
+    getAllBusinesses().then(setBusinesses)
+  }, [currentBusinessId])
+
+  const loadNetProfit = async () => {
+    setLoadingNetProfit(true)
+    try {
+      const data = await getNetProfitSummary()
+      setNetProfit(data)
+    } catch (error) {
+      console.error('Error loading net profit:', error)
+    } finally {
+      setLoadingNetProfit(false)
+    }
+  }
 
   const total = items.reduce((sum, item) => sum + item.cantidad * item.precio, 0)
 
@@ -226,6 +301,7 @@ function App() {
   const handleToggleSummary = async () => {
     if (!showSummary) {
       await loadSummary(summaryPeriod)
+      await loadNetProfit()
     }
     setShowSummary(!showSummary)
     if (showHistory) setShowHistory(false)
@@ -296,25 +372,6 @@ function App() {
     setEditingId(null)
   }
 
-  const handleSavePrice = async (productName: string) => {
-    const newPrice = Number(editingPriceValue)
-    if (!newPrice || newPrice <= 0) {
-      showNotification('error', 'Precio inválido')
-      return
-    }
-    try {
-      const { updateProductSuggestedPrice, getStockByProduct } = await import('./services/db')
-      await updateProductSuggestedPrice(productName, newPrice)
-      const stockData = await getStockByProduct()
-      setInventory(stockData)
-      setEditingPriceProduct(null)
-      setEditingPriceValue('')
-      showNotification('success', `Precio actualizado`)
-    } catch {
-      showNotification('error', 'Error al actualizar precio')
-    }
-  }
-
   const handleGuardar = async () => {
     if (items.length === 0) {
       showNotification('error', 'Agrega productos primero')
@@ -327,8 +384,6 @@ function App() {
     }
 
     if (mode === 'venta') {
-      const { getProductStock } = await import('./services/db')
-      
       for (const item of items) {
         const stock = await getProductStock(item.producto)
         if (stock < item.cantidad) {
@@ -341,19 +396,22 @@ function App() {
     setLoading(true)
 
     try {
-      const { getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta } = await import('./services/db')
-
       await getOrCreateDefaultBusiness()
+
+      const products = await db.products.where('businessId').equals(currentBusinessId).toArray()
+      const productMap = new Map<string, { cost?: number }>()
+      products.forEach(p => productMap.set(p.name.toLowerCase(), { cost: p.cost }))
 
       const transactionItems = items.map(item => {
         const isProduction = mode === 'produccion'
         const kgQuantity = isProduction && productionMeta.pesoSalida ? Number(productionMeta.pesoSalida) : item.cantidad
+        const productCost = productMap.get(item.producto.toLowerCase())?.cost
         return {
           name: item.producto,
           quantity: kgQuantity,
           price: item.precio,
           subtotal: kgQuantity * item.precio,
-          costUnitario: isProduction ? item.precio / kgQuantity : undefined,
+          costUnitario: productCost || (isProduction ? item.precio / kgQuantity : undefined),
         }
       })
 
@@ -404,14 +462,27 @@ function App() {
     }
   }
 
-  const getAvailableModes = (): Mode[] => {
+const getAvailableModes = (): Mode[] => {
     const bases: Mode[] = ['venta']
-    if (activeTemplate.showCompra) bases.push('compra')
-    if (activeTemplate.showProduccion) bases.push('produccion')
-    if (activeTemplate.showGastos) bases.push('gasto')
+    if (activeTemplate.showCompra && isFeatureAllowed('compra')) bases.push('compra')
+    if (activeTemplate.showProduccion && isFeatureAllowed('produccion')) bases.push('produccion')
+    if (activeTemplate.showGastos && isFeatureAllowed('gastos')) bases.push('gasto')
     return bases
   }
-
+  
+  const handleActivateLicense = async () => {
+    const result = await activateLicense(licenseEmail)
+    setLicenseStatus(result)
+    if (result.success) {
+      setTimeout(() => {
+        setShowLicenseModal(false)
+        setLicenseStatus(null)
+        setLicenseEmail('')
+        window.location.reload()
+      }, 1500)
+    }
+  }
+   
   return (
     <>
       {notification && (
@@ -431,14 +502,68 @@ function App() {
         />
       )}
 
-      <div className="min-h-screen bg-gray-100 py-8 px-4">
-        <div className="max-w-2xl mx-auto space-y-4">
+      <div className="min-h-screen bg-gray-100 py-6 px-4">
+        <div className="w-full max-w-7xl mx-auto space-y-4">
+          {!licenseState.isActivated && (
+            <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-amber-800 text-lg">🔑 Activa tu licencia</h3>
+                <p className="text-amber-700 text-sm">Ingresa tu email para acceder a todas las funciones</p>
+              </div>
+              <button
+                onClick={() => setShowLicenseModal(true)}
+                className="px-6 py-3 bg-amber-500 text-white rounded-lg font-bold hover:bg-amber-600 shadow-lg whitespace-nowrap"
+              >
+                Activar ahora
+              </button>
+            </div>
+          )}
+
           <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold text-gray-800">LionCore POS</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold text-gray-800">LionCore POS</h1>
+              {licenseState.isActivated && (
+                <span
+                  className={`text-xs px-2 py-1 rounded-full font-semibold cursor-pointer ${licenseState.plan === 'pro' ? 'bg-purple-100 text-purple-700' : licenseState.plan === 'enterprise' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}
+                  onClick={() => setShowDeviceModal(true)}
+                  title="Click para ver info del dispositivo"
+                >
+                  {licenseState.plan.toUpperCase()} {licenseStatusCheck.daysLeft >= 0 && `(${licenseStatusCheck.daysLeft}d)`}
+                </span>
+              )}
+              {!licenseState.isActivated && (
+                <span className="text-xs px-2 py-1 rounded-full font-semibold bg-red-100 text-red-600">
+                  FREE
+                </span>
+              )}
+            </div>
             <div className="flex gap-2">
               <button
-                onClick={() => { setShowConfig(!showConfig); setShowSummary(false); setShowHistory(false); }}
+                onClick={() => setShowDeviceModal(true)}
+                className="px-3 py-2 rounded-lg font-semibold text-xs bg-gray-200 text-gray-700 hover:bg-gray-300 max-w-48 truncate"
+                title="Click para ver Device ID completo"
+              >
+                💻 ...{getDeviceId().slice(-8)}
+              </button>
+              {!licenseState.isActivated && (
+                <button
+                  onClick={() => setShowLicenseModal(true)}
+                  className="px-4 py-2 rounded-lg font-semibold transition-colors bg-amber-500 text-white hover:bg-amber-600"
+                >
+                  🔑 Activar
+                </button>
+              )}
+              <button
+                onClick={() => { 
+                  if (!isFeatureAllowed('config')) {
+                    const msg = getUpgradeMessage('config')
+                    setShowUpgradeModal(msg)
+                    return
+                  }
+                  setShowConfig(!showConfig); setShowSummary(false); setShowHistory(false); 
+                }}
                 className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                  !isFeatureAllowed('config') ? 'bg-gray-300 text-gray-500 cursor-not-allowed' :
                   showConfig ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
                 }`}
               >
@@ -463,7 +588,6 @@ function App() {
               <button
                 onClick={async () => {
                   if (!showInventory) {
-                    const { getStockByProduct } = await import('./services/db')
                     const stockData = await getStockByProduct()
                     setInventory(stockData)
                   }
@@ -532,7 +656,61 @@ function App() {
 
           {showConfig && (
             <div className="bg-white rounded-xl shadow-md p-4">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">Configuración de Costos</h2>
+              <h2 className="text-xl font-bold text-gray-800 mb-4">⚙️ Configuración</h2>
+
+              <div className="mb-6 p-4 bg-gray-50 rounded-xl">
+                <h3 className="font-semibold text-gray-700 mb-3">🏢 Negocios</h3>
+                <div className="space-y-2 mb-3">
+                  {businesses.map(b => {
+                    const tpl = businessTemplates[b.tipo || 'pos']
+                    const isActive = b.id === currentBusinessId
+                    return (
+                      <div
+                        key={b.id}
+                        className={`flex items-center justify-between p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                          isActive ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                        onClick={() => {
+                          setCurrentBusinessId(b.id!)
+                          window.location.reload()
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">{tpl.emoji}</span>
+                          <div>
+                            <p className="font-semibold text-sm">{b.name}</p>
+                            <p className="text-xs text-gray-500">{tpl.label} • {tpl.unidad}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isActive && <span className="text-xs bg-blue-500 text-white px-2 py-1 rounded-full">Activo</span>}
+                          {businesses.length > 1 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                if (confirm(`¿Eliminar "${b.name}"?`)) {
+                                  deleteBusiness(b.id!).then(() => window.location.reload())
+                                }
+                              }}
+                              className="w-6 h-6 flex items-center justify-center rounded-full bg-red-100 text-red-500 hover:bg-red-200 text-xs"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <button
+                  onClick={() => setShowNewBusinessModal(true)}
+                  className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 text-sm"
+                >
+                  + Nuevo Negocio
+                </button>
+              </div>
+              
+              <h3 className="font-bold text-gray-800 mb-3">Configuración de Costos</h3>
               <p className="text-sm text-gray-500 mb-4">Configura los costos fijos para calcular el precio de venta en producción.</p>
               
               <div className="grid grid-cols-2 gap-3">
@@ -591,7 +769,6 @@ function App() {
               <button
                 onClick={async () => {
                   try {
-                    const { saveBusinessConfig } = await import('./services/db')
                     await saveBusinessConfig({
                       costoManoObra: Number(businessConfig.costoManoObra) || 0,
                       costoEnergia: Number(businessConfig.costoEnergia) || 0,
@@ -651,6 +828,38 @@ function App() {
                     </div>
                   </div>
                   <p className="text-center text-sm text-gray-500">{summary.transacciones} transacciones</p>
+
+                  {netProfit && (
+                    <div className="border-t border-gray-200 pt-4 mt-4">
+                      <h3 className="font-bold text-gray-800 mb-3">📈 Ganancia Real</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="bg-emerald-50 rounded-lg p-3 text-center">
+                          <p className="text-xs text-emerald-600 font-semibold">Ventas</p>
+                          <p className="text-lg font-bold text-emerald-700">{formatCOP(netProfit.ventasTotales)}</p>
+                        </div>
+                        <div className="bg-orange-50 rounded-lg p-3 text-center">
+                          <p className="text-xs text-orange-600 font-semibold">Costo productos</p>
+                          <p className="text-lg font-bold text-orange-700">{formatCOP(netProfit.costoProductosVendidos)}</p>
+                        </div>
+                        <div className="bg-purple-50 rounded-lg p-3 text-center">
+                          <p className="text-xs text-purple-600 font-semibold">Gastos + Compras</p>
+                          <p className="text-lg font-bold text-purple-700">{formatCOP(netProfit.gastosOperativos + netProfit.comprasMateriaPrima)}</p>
+                        </div>
+                        <div className={`rounded-lg p-3 text-center ${netProfit.gananciaNeta >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+                          <p className={`text-xs font-semibold ${netProfit.gananciaNeta >= 0 ? 'text-green-600' : 'text-red-600'}`}>Ganancia Neta</p>
+                          <p className={`text-lg font-bold ${netProfit.gananciaNeta >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                            {formatCOP(netProfit.gananciaNeta)}
+                          </p>
+                          <p className={`text-xs font-bold mt-1 ${netProfit.margenPorcentaje >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            {netProfit.margenPorcentaje.toFixed(1)}% margen
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {loadingNetProfit && (
+                    <div className="text-center text-sm text-gray-400">Calculando ganancia...</div>
+                  )}
                 </div>
               ) : (
                 <div className="p-8 text-center text-gray-400">Sin datos</div>
@@ -661,90 +870,108 @@ function App() {
           {showInventory && (
             <div className="bg-white rounded-xl shadow-md overflow-hidden">
               <div className="p-4 border-b border-gray-200">
-                <h2 className="text-xl font-bold text-gray-800">Inventario</h2>
-                <p className="text-sm text-gray-500">{inventory.length} productos</p>
+                <div className="flex justify-between items-center mb-3">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-800">Inventario</h2>
+                    <p className="text-sm text-gray-500">{inventory.length} productos</p>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Buscar..."
+                      value={inventorySearch}
+                      onChange={(e) => setInventorySearch(e.target.value)}
+                      className="w-48 py-2 px-4 pl-10 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+                  </div>
+                </div>
               </div>
 
-              {inventory.length === 0 ? (
+              {inventory.filter(i => i.name.toLowerCase().includes(inventorySearch.toLowerCase())).length === 0 ? (
                 <div className="p-12 text-center">
-                  <p className="text-gray-400 text-lg mb-2">No hay productos en inventario</p>
+                  <p className="text-gray-400 text-lg mb-2">
+                    {inventorySearch ? 'No se encontraron productos' : 'No hay productos en inventario'}
+                  </p>
                   <p className="text-gray-400 text-sm">Registra producciones para ver el inventario</p>
                 </div>
               ) : (
-                <div className="divide-y divide-gray-100">
-                  {inventory.map((item, index) => (
-                    <div key={index} className="p-4 flex justify-between items-center hover:bg-gray-50">
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-800">{item.name}</p>
-                        <p className="text-xs text-gray-400">
-                          Producido: {item.totalProduced || 0} | Vendido: {item.totalSold || 0}
-                        </p>
-                        {(item.pesoEntrada || item.pesoSalida || item.tiempo || item.notas) && (
-                          <div className="mt-1 text-xs text-purple-600 space-y-0.5">
-                            {item.pesoEntrada && <span>Kg entrada: {item.pesoEntrada} | </span>}
-                            {item.pesoSalida && <span>Kg salida: {item.pesoSalida} | </span>}
-                            {item.tiempo && <span>Tiempo: {item.tiempo} min</span>}
-                            {item.notas && <span className="block text-gray-500">Notas: {item.notas}</span>}
+                <div className="p-4 overflow-y-auto" style={{ maxHeight: '60vh' }}>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                    {inventory
+                      .filter(i => i.name.toLowerCase().includes(inventorySearch.toLowerCase()))
+                      .map((item, index) => (
+                        <div
+                          key={index}
+                          className="bg-gradient-to-br from-white to-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-lg hover:border-blue-300 transition-all duration-200 cursor-pointer"
+                          onClick={() => {
+                            setProducto(item.name)
+                            if (item.lastPrice) setPrecio(String(item.lastPrice))
+                            setShowInventory(false)
+                          }}
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <h3 className="font-bold text-gray-800 text-sm truncate flex-1" title={item.name}>
+                              {item.name}
+                            </h3>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${item.quantity > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                              {item.quantity > 0 ? '✓' : '✗'}
+                            </span>
                           </div>
-                        )}
-                        <div className="flex items-center gap-2 mt-1">
-                          {editingPriceProduct === item.name ? (
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                value={editingPriceValue}
-                                onChange={(e) => setEditingPriceValue(e.target.value)}
-                                className="w-24 py-1 px-2 border border-blue-400 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                autoFocus
-                                onKeyPress={(e) => e.key === 'Enter' && handleSavePrice(item.name)}
-                              />
-                              <button
-                                onClick={() => handleSavePrice(item.name)}
-                                className="px-2 py-1 bg-green-500 text-white text-xs rounded hover:bg-green-600"
-                              >
-                                Guardar
-                              </button>
-                              <button
-                                onClick={() => setEditingPriceProduct(null)}
-                                className="px-2 py-1 bg-gray-400 text-white text-xs rounded hover:bg-gray-500"
-                              >
-                                Cancelar
-                              </button>
-                            </div>
-                          ) : (
-                            <>
-                              <span className="text-sm text-blue-600 font-semibold">
-                                Precio: {item.lastPrice ? formatCOP(item.lastPrice) : 'Sin precio'}
+                          
+                          <div className="space-y-1 mb-3">
+                            <div className="flex justify-between">
+                              <span className="text-xs text-gray-500">Stock</span>
+                              <span className={`text-lg font-bold ${item.quantity > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                {item.quantity}
                               </span>
-                              <button
-                                onClick={() => {
-                                  setEditingPriceProduct(item.name)
-                                  setEditingPriceValue(item.lastPrice ? String(item.lastPrice) : '')
-                                }}
-                                className="px-2 py-1 bg-blue-100 text-blue-600 text-xs rounded hover:bg-blue-200"
-                              >
-                                Editar
-                              </button>
-                            </>
-                          )}
+                            </div>
+                            {activeTemplate.unidad === 'kg' && item.quantity > 0 && (
+                              <div className="text-xs text-gray-400 text-right">{activeTemplate.unidad}</div>
+                            )}
+                          </div>
+                          
+                          <div className="border-t border-gray-100 pt-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs text-gray-500">Precio</span>
+                              <span className="text-sm font-semibold text-blue-600">
+                                {item.lastPrice ? formatCOP(item.lastPrice) : '—'}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <div className="mt-2 pt-2 border-t border-gray-100">
+                            <div className="flex justify-between text-xs text-gray-400">
+                              <span>📦 {item.totalProduced || 0}</span>
+                              <span>💰 {item.totalSold || 0}</span>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-right ml-4">
-                        <p className={`text-xl font-bold ${item.quantity > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                          {item.quantity}
-                        </p>
-                        <p className="text-xs text-gray-400">en stock</p>
-                      </div>
-                    </div>
-                  ))}
+                      ))}
+                  </div>
+                </div>
+)}
                 </div>
               )}
-            </div>
-          )}
 
-          {!showHistory && !showSummary && !showConfig && !showInventory && (
+{!showHistory && !showSummary && !showConfig && !showInventory && (
             <>
               <p className="text-center text-sm text-gray-500">Negocio ID: {currentBusinessId}</p>
+              
+              {!licenseState.isActivated && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
+                  <p className="text-sm text-yellow-800 font-semibold">🔒 Modo FREE - Solo Ventas disponibles</p>
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('lioncore_license')
+                      window.location.reload()
+                    }}
+                    className="text-xs text-yellow-600 underline mt-1"
+                  >
+                    Resetear licencia
+                  </button>
+                </div>
+              )}
 
               <div className="bg-white rounded-xl shadow-md p-4">
                 <div className="flex gap-2">
@@ -774,7 +1001,6 @@ function App() {
                       onChange={async (e) => {
                         setProducto(e.target.value)
                         if (mode === 'venta' && e.target.value.length > 1) {
-                          const { getStockByProduct } = await import('./services/db')
                           const stockData = await getStockByProduct()
                           const filtered = stockData.filter(p => 
                             p.name.toLowerCase().includes(e.target.value.toLowerCase()) && p.quantity > 0
@@ -787,7 +1013,6 @@ function App() {
                       }}
                       onFocus={async () => {
                         if (mode === 'venta' && producto.length > 1) {
-                          const { getStockByProduct } = await import('./services/db')
                           const stockData = await getStockByProduct()
                           const filtered = stockData.filter(p => 
                             p.name.toLowerCase().includes(producto.toLowerCase()) && p.quantity > 0
@@ -1089,6 +1314,404 @@ function App() {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {showLicenseModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
+                <button
+                  onClick={() => { setShowLicenseModal(false); setLicenseStatus(null); setLicenseEmail(''); }}
+                  className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors font-bold text-lg"
+                >
+                  ✕
+                </button>
+                <div className="text-center mb-6">
+                  <div className="text-4xl mb-2">🔑</div>
+                  <h2 className="text-2xl font-bold text-gray-800">Activar Licencia</h2>
+                  <p className="text-sm text-gray-500 mt-1">Ingresa tu email para validar la licencia</p>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                    <input
+                      type="email"
+                      value={licenseEmail}
+                      onChange={(e) => { setLicenseEmail(e.target.value); setLicenseStatus(null); }}
+                      placeholder="tu@email.com"
+                      className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      onKeyDown={(e) => e.key === 'Enter' && handleActivateLicense()}
+                    />
+                  </div>
+                  
+                  {licenseStatus && (
+                    <div className={`p-3 rounded-lg text-sm ${licenseStatus.success ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {licenseStatus.message}
+                    </div>
+                  )}
+                  
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => { setShowLicenseModal(false); setLicenseStatus(null); setLicenseEmail(''); }}
+                      className="flex-1 py-3 px-4 border border-gray-300 rounded-lg font-semibold text-gray-600 hover:bg-gray-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleActivateLicense}
+                      disabled={!licenseEmail}
+                      className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    >
+                      Activar
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="mt-6 pt-4 border-t border-gray-200">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-2">Planes disponibles:</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                      <span className="font-medium">Free</span>
+                      <span className="text-gray-500">Ventas + Exportar</span>
+                    </div>
+                    <div className="flex justify-between items-center p-2 bg-purple-50 rounded">
+                      <span className="font-medium text-purple-600">Pro</span>
+                      <span className="text-purple-600">Todas las funciones</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="mt-4">
+                  <button
+                    onClick={() => { setShowLicenseModal(false); setShowPaymentModal(true); }}
+                    className="w-full py-3 px-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-bold hover:from-green-600 hover:to-green-700 shadow-lg flex items-center justify-center gap-2"
+                  >
+                    💳 Pagar aquí
+                  </button>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-gray-200">
+                  <button
+                    onClick={async () => {
+                      try {
+                        const data = await fetchSheetData()
+                        setLicenseDebug(JSON.stringify(data, null, 2))
+                      } catch (e: any) {
+                        setLicenseDebug(`Error: ${e.message}`)
+                      }
+                    }}
+                    className="w-full py-2 px-4 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200"
+                  >
+                    🔍 Ver datos del Sheet
+                  </button>
+                  {licenseDebug && (
+                    <pre className="mt-2 p-2 bg-gray-900 text-green-400 rounded-lg text-xs overflow-auto max-h-48 font-mono whitespace-pre-wrap">
+                      {licenseDebug}
+                    </pre>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showPaymentModal && (
+            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden relative">
+                <button
+                  onClick={() => setShowPaymentModal(false)}
+                  className="absolute top-3 right-3 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-white/90 hover:bg-white text-gray-600 hover:text-gray-800 transition-colors font-bold text-lg shadow-md"
+                >
+                  ✕
+                </button>
+                <div className="bg-gradient-to-r from-green-500 to-green-600 p-4 text-center">
+                  <h2 className="text-xl font-bold text-white">💳 Pagar para Activar</h2>
+                  <p className="text-green-100 text-sm mt-1">Realiza el pago y envía el comprobante</p>
+                </div>
+                
+                <div className="p-6">
+                  <div className="bg-gray-50 p-4 rounded-xl border-2 border-dashed border-gray-300 mb-4 flex justify-center">
+                    <img src="/QR.jpeg" alt="QR de Pago" className="w-48 h-48 object-contain" />
+                  </div>
+                  
+                  <a
+                    href="https://wa.me/573138777115?text=Hola!%20Acabo%20de%20pagar%20mi%20licencia%20de%20LionCore%20POS.%20Env%C3%ADo%20comprobante%20de%20pago."
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block bg-green-500 border-2 border-green-600 rounded-xl p-4 mb-4 cursor-pointer hover:bg-green-600 hover:shadow-lg transition-all text-center"
+                  >
+                    <p className="text-white font-bold text-lg mb-1">
+                      📸 Enviar comprobante de pago
+                    </p>
+                    <p className="text-green-100 text-sm">Toca aquí para abrir WhatsApp</p>
+                    <div className="flex items-center justify-center gap-2 mt-2">
+                      <span className="text-white text-2xl">📱</span>
+                      <span className="text-white text-xl font-bold">313 877 7115</span>
+                    </div>
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showUpgradeModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
+                <button
+                  onClick={() => setShowUpgradeModal(null)}
+                  className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors font-bold text-lg"
+                >
+                  ✕
+                </button>
+                <div className="text-center mb-6">
+                  <div className="text-4xl mb-2">🚀</div>
+                  <h2 className="text-xl font-bold text-gray-800">{showUpgradeModal.title}</h2>
+                  <p className="text-sm text-gray-500 mt-2">{showUpgradeModal.message}</p>
+                </div>
+                
+                <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-4 mb-4">
+                  <h3 className="font-semibold text-purple-700 mb-2">Beneficios PRO:</h3>
+                  <ul className="space-y-1 text-sm text-gray-700">
+                    <li>✅ Compras de materia prima</li>
+                    <li>✅ Registro de gastos</li>
+                    <li>✅ Configuración de costos</li>
+                    <li>✅ Control total de producción</li>
+                    <li>✅ Reportes avanzados</li>
+                  </ul>
+                </div>
+                
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowUpgradeModal(null)}
+                    className="flex-1 py-3 px-4 border border-gray-300 rounded-lg font-semibold text-gray-600 hover:bg-gray-50"
+                  >
+                    Ahora no
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowUpgradeModal(null)
+                      setShowPaymentModal(true)
+                    }}
+                    className="flex-1 py-3 px-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-bold hover:from-green-600 hover:to-green-700 shadow-lg"
+                  >
+                    💳 Pagar aquí
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="fixed bottom-2 right-2 z-50">
+            <button
+              onClick={() => setDebugShow(!debugShow)}
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-800/60 text-gray-400 hover:bg-gray-800/90 hover:text-white text-xs transition-all"
+            >
+              {debugShow ? '✕' : '🔍'}
+            </button>
+            {debugShow && (
+              <div className="absolute bottom-10 right-0 bg-gray-800/95 backdrop-blur text-gray-300 rounded-xl p-4 text-xs font-mono shadow-2xl w-80">
+                <h3 className="text-white font-bold mb-2">🔍 DEBUG - Licencia</h3>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div>activado: <span className={licenseState.isActivated ? 'text-green-400' : 'text-red-400'}>{String(licenseState.isActivated)}</span></div>
+                  <div>plan: <span className="text-yellow-400">{licenseState.plan}</span></div>
+                  <div>email: <span className="text-blue-400 truncate">{licenseState.email || '—'}</span></div>
+                  <div>expires: <span className="text-blue-400">{licenseState.expiresAt || '—'}</span></div>
+                  <div>días: <span className={licenseStatusCheck.daysLeft < 0 ? 'text-red-400' : 'text-green-400'}>{licenseStatusCheck.daysLeft}</span></div>
+                  <div>expirada: <span className={licenseStatusCheck.isExpired ? 'text-red-400' : 'text-green-400'}>{String(licenseStatusCheck.isExpired)}</span></div>
+                  <div>producción: <span className={isFeatureAllowed('produccion') ? 'text-green-400' : 'text-red-400'}>{isFeatureAllowed('produccion') ? '✅' : '❌'}</span></div>
+                  <div>compra: <span className={isFeatureAllowed('compra') ? 'text-green-400' : 'text-red-400'}>{isFeatureAllowed('compra') ? '✅' : '❌'}</span></div>
+                  <div>gastos: <span className={isFeatureAllowed('gastos') ? 'text-green-400' : 'text-red-400'}>{isFeatureAllowed('gastos') ? '✅' : '❌'}</span></div>
+                  <div>config: <span className={isFeatureAllowed('config') ? 'text-green-400' : 'text-red-400'}>{isFeatureAllowed('config') ? '✅' : '❌'}</span></div>
+                </div>
+                <button
+                  onClick={() => { localStorage.removeItem('lioncore_license'); window.location.reload(); }}
+                  className="mt-3 w-full px-3 py-1.5 bg-red-600/80 text-white rounded hover:bg-red-600 font-bold text-xs"
+                >
+                  🗑️ Resetear Licencia
+                </button>
+              </div>
+            )}
+          </div>
+
+          {showDeviceModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
+                <button
+                  onClick={() => setShowDeviceModal(false)}
+                  className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors font-bold text-lg"
+                >
+                  ✕
+                </button>
+                <div className="text-center mb-6">
+                  <div className="text-4xl mb-2">💻</div>
+                  <h2 className="text-2xl font-bold text-gray-800">Info del Dispositivo</h2>
+                </div>
+                
+                <div className="space-y-3">
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500">Device ID</p>
+                    <p className="font-mono text-sm font-bold text-gray-800 break-all">{getDeviceId()}</p>
+                  </div>
+                  {licenseState.isActivated && (
+                    <>
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <p className="text-xs text-gray-500">Email</p>
+                        <p className="text-sm font-semibold text-gray-800">{licenseState.email}</p>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <p className="text-xs text-gray-500">Plan</p>
+                        <p className={`text-sm font-bold ${licenseState.plan === 'pro' ? 'text-purple-600' : licenseState.plan === 'enterprise' ? 'text-yellow-600' : 'text-gray-600'}`}>
+                          {licenseState.plan.toUpperCase()}
+                        </p>
+                      </div>
+                      {licenseStatusCheck.daysLeft >= 0 && (
+                        <div className={`rounded-lg p-3 ${licenseStatusCheck.daysLeft <= 7 ? 'bg-amber-50 border border-amber-200' : 'bg-green-50'}`}>
+                          <p className="text-xs text-gray-500">Días restantes</p>
+                          <p className={`text-lg font-bold ${licenseStatusCheck.daysLeft <= 7 ? 'text-amber-600' : 'text-green-600'}`}>
+                            {licenseStatusCheck.daysLeft} días
+                          </p>
+                        </div>
+                      )}
+                      {licenseStatusCheck.isExpired && (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                          <p className="text-sm font-bold text-red-600">⚠️ Licencia expirada</p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+                
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={() => setShowDeviceModal(false)}
+                    className="flex-1 py-3 px-4 border border-gray-300 rounded-lg font-semibold text-gray-600 hover:bg-gray-50"
+                  >
+                    Cerrar
+                  </button>
+                  {licenseState.isActivated && (
+                    <button
+                      onClick={() => {
+                        deactivateLicense()
+                        setShowDeviceModal(false)
+                        window.location.reload()
+                      }}
+                      className="py-3 px-4 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600"
+                    >
+                      Desactivar
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showNewBusinessModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
+                <button
+                  onClick={() => { setShowNewBusinessModal(false); setNewBusinessName(''); }}
+                  className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors font-bold text-lg"
+                >
+                  ✕
+                </button>
+                <div className="text-center mb-6">
+                  <div className="text-4xl mb-2">🏢</div>
+                  <h2 className="text-2xl font-bold text-gray-800">Nuevo Negocio</h2>
+                  <p className="text-sm text-gray-500 mt-1">Crea un nuevo negocio con su plantilla</p>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Nombre del negocio</label>
+                    <input
+                      type="text"
+                      value={newBusinessName}
+                      onChange={(e) => setNewBusinessName(e.target.value)}
+                      placeholder="Ej: Mi Restaurante"
+                      className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      onKeyDown={(e) => e.key === 'Enter' && newBusinessName && createBusiness(newBusinessName, newBusinessType).then(() => window.location.reload())}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de negocio</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(Object.keys(businessTemplates) as BusinessType[]).map(tipo => {
+                        const tpl = businessTemplates[tipo]
+                        const isSelected = newBusinessType === tipo
+                        return (
+                          <button
+                            key={tipo}
+                            onClick={() => setNewBusinessType(tipo)}
+                            className={`p-3 rounded-lg border-2 text-left transition-all ${
+                              isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                          >
+                            <span className="text-2xl">{tpl.emoji}</span>
+                            <p className="text-sm font-semibold mt-1">{tpl.label}</p>
+                            <p className="text-xs text-gray-500">Unidad: {tpl.unidad}</p>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  
+                  <button
+                    onClick={() => {
+                      if (newBusinessName) {
+                        createBusiness(newBusinessName, newBusinessType).then(() => window.location.reload())
+                      }
+                    }}
+                    disabled={!newBusinessName}
+                    className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    Crear Negocio
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {licenseStatusCheck.isExpired && (
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
+                <div className="text-6xl mb-4">⚠️</div>
+                <h2 className="text-2xl font-bold text-red-600 mb-2">Licencia Expirada</h2>
+                <p className="text-gray-600 mb-6">Tu licencia ha expirado. Contacta soporte para renovar.</p>
+                
+                <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                  <p className="text-sm text-gray-500">Device ID</p>
+                  <p className="font-mono text-sm font-bold">{getDeviceId()}</p>
+                </div>
+                
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      deactivateLicense()
+                      window.location.reload()
+                    }}
+                    className="py-3 px-4 border border-gray-300 rounded-lg font-semibold text-gray-600 hover:bg-gray-50"
+                  >
+                    Modo FREE
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowLicenseModal(true)
+                    }}
+                    className="flex-1 py-3 px-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-bold hover:from-green-600 hover:to-green-700"
+                  >
+                    💳 Pagar para renovar
+                  </button>
+                  <a
+                    href="https://wa.me/573138777115?text=Hola!%20Mi%20licencia%20expir%C3%B3%20y%20necesito%20renovarla.%20Device%20ID:%20{getDeviceId()}"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-3 px-4 bg-green-500 text-white rounded-lg font-bold hover:bg-green-600"
+                  >
+                    📱
+                  </a>
+                </div>
+              </div>
             </div>
           )}
         </div>
