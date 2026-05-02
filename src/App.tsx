@@ -1078,7 +1078,11 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                   })}
                 </div>
                 <button
-                  onClick={() => setShowNewBusinessModal(true)}
+                  onClick={() => {
+                    setShowNewBusinessModal(true)
+                    setNewBusinessName('')
+                    setNewBusinessType('pos')
+                  }}
                   className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 text-sm"
                 >
                   + Nuevo Negocio
@@ -2004,7 +2008,13 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                       onChange={(e) => setNewBusinessName(e.target.value)}
                       placeholder="Ej: Mi Restaurante"
                       className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      onKeyDown={(e) => e.key === 'Enter' && newBusinessName && createBusiness(newBusinessName, newBusinessType).then(() => window.location.reload())}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && newBusinessName) {
+                          createBusiness(newBusinessName, newBusinessType)
+                            .then(id => { setCurrentBusinessId(id); window.location.reload() })
+                            .catch(err => showNotification('error', err.message))
+                        }
+                      }}
                     />
                   </div>
                   
@@ -2032,9 +2042,14 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                   </div>
                   
                   <button
-                    onClick={() => {
-                      if (newBusinessName) {
-                        createBusiness(newBusinessName, newBusinessType).then(() => window.location.reload())
+                    onClick={async () => {
+                      if (!newBusinessName) return
+                      try {
+                        const newId = await createBusiness(newBusinessName, newBusinessType)
+                        setCurrentBusinessId(newId)
+                        window.location.reload()
+                      } catch (e: any) {
+                        showNotification('error', `Error: ${e.message}`)
                       }
                     }}
                     disabled={!newBusinessName}
