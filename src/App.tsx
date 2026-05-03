@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, updateBusinessType, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, openMesa, addToMesa, closeMesa, removeItemFromMesa, resetAllMesas, InventoryConfig, getInventoryConfig, saveInventoryConfig, adjustInventory, getInventoryMode } from './services/db'
+import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, updateBusinessType, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, openMesa, addToMesa, closeMesa, removeItemFromMesa, resetAllMesas, InventoryConfig, getInventoryConfig, saveInventoryConfig, adjustInventory, getInventoryMode, createProduction, getProductions, getProductionDashboard, Production, getRawMaterials, getFinalProducts } from './services/db'
 import { getLicenseState, isFeatureAllowed, activateLicense, checkLicenseStatus, refreshLicenseCheck, getUpgradeMessage, getDeviceId, deactivateLicense, fetchSheetData } from './services/license'
 
 type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
@@ -202,6 +202,16 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [adjustReason, setAdjustReason] = useState('')
   const [showMoreMenu, setShowMoreMenu] = useState(false)
   const [fabOpen, setFabOpen] = useState(false)
+  const [showProduction, setShowProduction] = useState(false)
+  const [productionRawMaterial, setProductionRawMaterial] = useState('')
+  const [productionRawQty, setProductionRawQty] = useState('')
+  const [productionFinalProduct, setProductionFinalProduct] = useState('')
+  const [productionFinalQty, setProductionFinalQty] = useState('')
+  const [productionNotes, setProductionNotes] = useState('')
+  const [productions, setProductions] = useState<Production[]>([])
+  const [productionDashboard, setProductionDashboard] = useState<{totalProduced: number; totalWaste: number; avgRendimiento: number; totalBatches: number; totalCost: number} | null>(null)
+  const [rawMaterials, setRawMaterials] = useState<any[]>([])
+  const [finalProducts, setFinalProducts] = useState<any[]>([])
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [newProductName, setNewProductName] = useState('')
   const [newProductPrice, setNewProductPrice] = useState('')
@@ -825,6 +835,66 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     setInlineEditField(null)
   }
 
+  const loadProductionData = async () => {
+    try {
+      const prods = await getProductions()
+      setProductions(prods)
+      const dashboard = await getProductionDashboard()
+      setProductionDashboard(dashboard)
+      const raw = await getRawMaterials()
+      setRawMaterials(raw)
+      const final = await getFinalProducts()
+      setFinalProducts(final)
+    } catch (error) {
+      console.error('Error loading production data:', error)
+    }
+  }
+
+  const handleProduction = async () => {
+    if (!productionRawMaterial || !productionRawQty || !productionFinalProduct || !productionFinalQty) {
+      showNotification('error', 'Completa todos los campos')
+      return
+    }
+    const rawQty = Number(productionRawQty)
+    const finalQty = Number(productionFinalQty)
+    if (rawQty <= 0 || finalQty <= 0) {
+      showNotification('error', 'Cantidades deben ser mayores a 0')
+      return
+    }
+    if (finalQty > rawQty) {
+      showNotification('error', 'El producto final no puede ser mayor a la materia prima')
+      return
+    }
+    try {
+      const rawProduct = await db.products.where({ businessId: currentBusinessId, name: productionRawMaterial, type: 'materia_prima' }).first()
+      const finalProduct = await db.products.where({ businessId: currentBusinessId, name: productionFinalProduct, type: 'producto_final' }).first()
+      if (!rawProduct || !finalProduct) {
+        showNotification('error', 'Selecciona materia prima y producto final validos')
+        return
+      }
+      await createProduction(rawProduct.id!, rawQty, finalProduct.id!, finalQty, productionNotes || undefined)
+      showNotification('success', 'Produccion registrada')
+      setProductionRawMaterial('')
+      setProductionRawQty('')
+      setProductionFinalProduct('')
+      setProductionFinalQty('')
+      setProductionNotes('')
+      await loadProductionData()
+    } catch (error) {
+      console.error('Error en produccion:', error)
+      showNotification('error', 'Error al registrar produccion')
+    }
+  }
+
+  const calculatedRendimiento = () => {
+    const raw = Number(productionRawQty)
+    const final = Number(productionFinalQty)
+    if (raw > 0 && final > 0) {
+      return ((final / raw) * 100).toFixed(1)
+    }
+    return '0'
+  }
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleAgregar()
@@ -978,10 +1048,26 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                 className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${
                   showInventory ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
                 }`}
-              >
-                📦
-              </button>
-              <div className="relative">
+                >
+                  📦
+                </button>
+                {currentBusinessType === 'deshidratados' && (
+                  <button
+                    onClick={async () => {
+                      setShowProduction(!showProduction)
+                      setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false)
+                      if (!showProduction) {
+                        await loadProductionData()
+                      }
+                    }}
+                    className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${
+                      showProduction ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
+                    }`}
+                  >
+                    🏭
+                  </button>
+                )}
+                <div className="relative">
                 <button
                   onClick={() => setShowMoreMenu(!showMoreMenu)}
                   className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${
@@ -1764,7 +1850,155 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                 </div>
               )}
 
-{!showHistory && !showSummary && !showConfig && !showInventory && (
+          {showProduction && currentBusinessType === 'deshidratados' && (
+            <div className="bg-white rounded-xl shadow-md overflow-hidden">
+              <div className="p-4 border-b border-gray-200">
+                <h2 className="text-xl font-bold text-gray-800">🏭 Produccion</h2>
+                <p className="text-sm text-gray-500">Convierte materia prima en producto final</p>
+              </div>
+
+              {productionDashboard && (
+                <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-green-50 rounded-lg p-3 text-center">
+                    <p className="text-xs text-green-600 font-semibold">Producido Total</p>
+                    <p className="text-lg font-bold text-green-700">{productionDashboard.totalProduced} kg</p>
+                  </div>
+                  <div className="bg-red-50 rounded-lg p-3 text-center">
+                    <p className="text-xs text-red-600 font-semibold">Merma Total</p>
+                    <p className="text-lg font-bold text-red-700">{productionDashboard.totalWaste} kg</p>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-3 text-center">
+                    <p className="text-xs text-blue-600 font-semibold">Rendimiento Prom.</p>
+                    <p className="text-lg font-bold text-blue-700">{productionDashboard.avgRendimiento.toFixed(1)}%</p>
+                  </div>
+                  <div className="bg-purple-50 rounded-lg p-3 text-center">
+                    <p className="text-xs text-purple-600 font-semibold">Lotes</p>
+                    <p className="text-lg font-bold text-purple-700">{productionDashboard.totalBatches}</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="p-4 border-t border-gray-200">
+                <h3 className="font-bold text-gray-800 mb-3">🔄 Nueva Produccion</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Materia Prima</label>
+                    <select
+                      value={productionRawMaterial}
+                      onChange={e => setProductionRawMaterial(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">Seleccionar...</option>
+                      {rawMaterials.map(p => (
+                        <option key={p.id} value={p.name}>{p.name} (Stock: {p.stock || 0} kg)</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Producto Final</label>
+                    <select
+                      value={productionFinalProduct}
+                      onChange={e => setProductionFinalProduct(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">Seleccionar...</option>
+                      {finalProducts.map(p => (
+                        <option key={p.id} value={p.name}>{p.name} (Stock: {p.stock || 0} kg)</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad Materia Prima (kg)</label>
+                    <input
+                      type="number"
+                      value={productionRawQty}
+                      onChange={e => setProductionRawQty(e.target.value)}
+                      placeholder="10"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Producto Final Obtenido (kg)</label>
+                    <input
+                      type="number"
+                      value={productionFinalQty}
+                      onChange={e => setProductionFinalQty(e.target.value)}
+                      placeholder="2"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Notas (opcional)</label>
+                    <input
+                      type="text"
+                      value={productionNotes}
+                      onChange={e => setProductionNotes(e.target.value)}
+                      placeholder="Tiempo, temperatura, etc."
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {Number(productionRawQty) > 0 && Number(productionFinalQty) > 0 && (
+                  <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                    <div className="flex justify-between text-sm">
+                      <span>Rendimiento:</span>
+                      <span className={`font-bold ${Number(calculatedRendimiento()) < 30 ? 'text-red-600' : 'text-green-600'}`}>
+                        {calculatedRendimiento()}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm mt-1">
+                      <span>Merma:</span>
+                      <span className="text-red-500 font-semibold">{(Number(productionRawQty) - Number(productionFinalQty)).toFixed(1)} kg</span>
+                    </div>
+                    {Number(calculatedRendimiento()) < 30 && (
+                      <p className="text-xs text-red-500 mt-2">⚠️ Estas perdiendo producto y no lo sabes</p>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleProduction}
+                  disabled={!productionRawMaterial || !productionFinalProduct || !productionRawQty || !productionFinalQty}
+                  className="w-full mt-4 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  🏭 Registrar Produccion
+                </button>
+              </div>
+
+              {productions.length > 0 && (
+                <div className="p-4 border-t border-gray-200">
+                  <h3 className="font-bold text-gray-800 mb-3">📋 Historial de Lotes</h3>
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {productions.slice(0, 20).map(prod => (
+                      <div key={prod.id} className="bg-gray-50 rounded-lg p-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-semibold text-sm text-gray-800">{prod.loteId}</p>
+                            <p className="text-xs text-gray-500">
+                              {prod.rawMaterialName} → {prod.finalProductName}
+                            </p>
+                          </div>
+                          <span className={`text-xs px-2 py-1 rounded-full font-bold ${prod.rendimiento >= 30 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {prod.rendimiento.toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-xs text-gray-500 mt-2">
+                          <span>{prod.rawMaterialQty} kg → {prod.finalProductQty} kg</span>
+                          <span>Merma: {prod.wasteQty.toFixed(1)} kg</span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {new Date(prod.date).toLocaleDateString()} - Costo: ${prod.costoUnitario.toFixed(0)}/kg
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+{!showHistory && !showSummary && !showConfig && !showInventory && !showProduction && (
             <>
               <p className="text-center text-sm text-gray-500">Negocio ID: {currentBusinessId}</p>
               

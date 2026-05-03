@@ -74,7 +74,34 @@ export interface Product {
   price: number
   cost?: number
   stock?: number
+  type?: 'materia_prima' | 'producto_final'
   createdAt: Date
+}
+
+export interface Production {
+  id?: number
+  businessId: number
+  loteId: string
+  rawMaterialName: string
+  rawMaterialId?: number
+  rawMaterialQty: number
+  finalProductName: string
+  finalProductId?: number
+  finalProductQty: number
+  wasteQty: number
+  rendimiento: number
+  costoUnitario: number
+  date: Date
+  notes?: string
+}
+
+export interface InventoryAdjustment {
+  id?: number
+  businessId: number
+  productName: string
+  quantity: number
+  reason: string
+  date: Date
 }
 
 export interface Transaction {
@@ -141,6 +168,7 @@ class LionCoreDB extends Dexie {
   transaction_meta!: Table<TransactionMeta, number>
   mesas!: Table<Mesa, number>
   inventory_adjustments!: Table<InventoryAdjustment, number>
+  productions!: Table<Production, number>
 
   constructor() {
     super('LionCoreDB')
@@ -164,6 +192,12 @@ class LionCoreDB extends Dexie {
 
     this.version(4).stores({
       inventory_adjustments: '++id, businessId, productName, date',
+    })
+
+    this.version(5).stores({
+      productions: '++id, businessId, loteId, date, rawMaterialName, finalProductName',
+    }).upgrade(() => {
+      return Promise.resolve()
     })
   }
 }
@@ -885,4 +919,113 @@ export function getInventoryMode(businessType: BusinessType): { showInventory: b
     default:
       return { showInventory: true, blockSales: false, allowNegative: true, label: 'Por unidades' }
   }
+}
+
+// ==================== PRODUCCION DESHIDRATADOS ====================
+
+export async function createProduction(
+  rawMaterialId: number,
+  rawMaterialQty: number,
+  finalProductId: number,
+  finalProductQty: number,
+  notes?: string
+): Promise<number> {
+  const businessId = getCurrentBusinessId()
+  const rawMaterial = await db.products.get(rawMaterialId)
+  const finalProduct = await db.products.get(finalProductId)
+  
+  if (!rawMaterial || !finalProduct) {
+    throw new Error('Producto no encontrado')
+  }
+
+  const loteId = `L-${Date.now().toString(36).toUpperCase()}`
+  const wasteQty = rawMaterialQty - finalProductQty
+  const rendimiento = rawMaterialQty > 0 ? (finalProductQty / rawMaterialQty) * 100 : 0
+  const totalCost = (rawMaterial.cost || 0) * rawMaterialQty
+  const costoUnitario = finalProductQty > 0 ? totalCost / finalProductQty : 0
+
+  const productionId = await db.productions.add({
+    businessId,
+    loteId,
+    rawMaterialName: rawMaterial.name,
+    rawMaterialId,
+    rawMaterialQty,
+    finalProductName: finalProduct.name,
+    finalProductId,
+    finalProductQty,
+    wasteQty,
+    rendimiento,
+    costoUnitario,
+    date: new Date(),
+    notes,
+  })
+
+  // Descontar materia prima
+  const newRawStock = (rawMaterial.stock || 0) - rawMaterialQty
+  await db.products.update(rawMaterialId, { stock: newRawStock })
+
+  // Sumar producto final
+  const newFinalStock = (finalProduct.stock || 0) + finalProductQty
+  await db.products.update(finalProductId, { stock: newFinalStock, cost: costoUnitario })
+
+  // Registrar transaccion de produccion
+  const txId = await db.transactions.add({
+    businessId,
+    type: 'produccion',
+    total: totalCost,
+    date: new Date(),
+  })
+
+  await db.transaction_items.add({
+    transactionId: txId,
+    productId: finalProductId,
+    name: `${finalProduct.name} (Lote ${loteId})`,
+    quantity: finalProductQty,
+    price: costoUnitario,
+    subtotal: totalCost,
+    costUnitario: costoUnitario,
+  })
+
+  return productionId
+}
+
+export async function getProductions(): Promise<Production[]> {
+  const businessId = getCurrentBusinessId()
+  return db.productions.where('businessId').equals(businessId).reverse().sortBy('date')
+}
+
+export async function getProductionDashboard(): Promise<{
+  totalProduced: number
+  totalWaste: number
+  avgRendimiento: number
+  totalBatches: number
+  totalCost: number
+}> {
+  const productions = await getProductions()
+  const totalProduced = productions.reduce((sum, p) => sum + p.finalProductQty, 0)
+  const totalWaste = productions.reduce((sum, p) => sum + p.wasteQty, 0)
+  const avgRendimiento = productions.length > 0 ? productions.reduce((sum, p) => sum + p.rendimiento, 0) / productions.length : 0
+  const totalCost = productions.reduce((sum, p) => sum + p.costoUnitario * p.finalProductQty, 0)
+  
+  return {
+    totalProduced,
+    totalWaste,
+    avgRendimiento,
+    totalBatches: productions.length,
+    totalCost,
+  }
+}
+
+export function generateLoteId(): string {
+  return `L-${Date.now().toString(36).toUpperCase()}`
+}
+
+export async function getRawMaterials(): Promise<Product[]> {
+  const businessId = getCurrentBusinessId()
+  return db.products.where({ businessId, type: 'materia_prima' }).toArray()
+}
+
+export async function getFinalProducts(): Promise<Product[]> {
+  const businessId = getCurrentBusinessId()
+  return db.products.where({ businessId, type: 'producto_final' }).toArray()
 }
