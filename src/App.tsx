@@ -202,6 +202,11 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [adjustReason, setAdjustReason] = useState('')
   const [showMoreMenu, setShowMoreMenu] = useState(false)
   const [fabOpen, setFabOpen] = useState(false)
+  const [showAddProduct, setShowAddProduct] = useState(false)
+  const [newProductName, setNewProductName] = useState('')
+  const [newProductPrice, setNewProductPrice] = useState('')
+  const [newProductCost, setNewProductCost] = useState('')
+  const [newProductStock, setNewProductStock] = useState('')
   const licenseState = getLicenseState()
   const licenseStatusCheck = checkLicenseStatus()
   
@@ -602,6 +607,40 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
       return
     }
     setShowInvoice(true)
+  }
+
+  const handleAddProduct = async () => {
+    if (!newProductName.trim()) {
+      showNotification('error', 'Ingresa el nombre del producto')
+      return
+    }
+    if (!newProductPrice || Number(newProductPrice) <= 0) {
+      showNotification('error', 'Ingresa un precio válido')
+      return
+    }
+    try {
+      await db.products.add({
+        businessId: currentBusinessId,
+        name: newProductName.trim(),
+        price: Number(newProductPrice),
+        cost: newProductCost ? Number(newProductCost) : 0,
+        stock: newProductStock ? Number(newProductStock) : 0,
+        createdAt: new Date(),
+      })
+      setNewProductName('')
+      setNewProductPrice('')
+      setNewProductCost('')
+      setNewProductStock('')
+      setShowAddProduct(false)
+      showNotification('success', 'Producto agregado correctamente')
+      if (showInventory) {
+        const stockData = await getStockByProduct()
+        setInventory(stockData)
+      }
+    } catch (error) {
+      console.error('Error al agregar producto:', error)
+      showNotification('error', 'Error al agregar el producto')
+    }
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -2337,7 +2376,81 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             </div>
           )}
 
-          {!showConfig && !showInventory && (
+          {showAddProduct && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={() => setShowAddProduct(false)}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-bold text-gray-800">📦 Agregar Producto</h2>
+                  <button onClick={() => setShowAddProduct(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del producto</label>
+                    <input
+                      type="text"
+                      value={newProductName}
+                      onChange={e => setNewProductName(e.target.value)}
+                      placeholder="Ej: Pollo Deshidratado"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      onKeyDown={e => e.key === 'Enter' && handleAddProduct()}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Precio de venta</label>
+                      <input
+                        type="number"
+                        value={newProductPrice}
+                        onChange={e => setNewProductPrice(e.target.value)}
+                        placeholder="$0"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        onKeyDown={e => e.key === 'Enter' && handleAddProduct()}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Costo</label>
+                      <input
+                        type="number"
+                        value={newProductCost}
+                        onChange={e => setNewProductCost(e.target.value)}
+                        placeholder="$0"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        onKeyDown={e => e.key === 'Enter' && handleAddProduct()}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Stock inicial (opcional)</label>
+                    <input
+                      type="number"
+                      value={newProductStock}
+                      onChange={e => setNewProductStock(e.target.value)}
+                      placeholder="0"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      onKeyDown={e => e.key === 'Enter' && handleAddProduct()}
+                    />
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setShowAddProduct(false)}
+                      className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleAddProduct}
+                      className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+                    >
+                      Guardar Producto
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!showConfig && !showInventory && !showAddProduct && (
             <div className="fixed bottom-6 right-6 z-50">
               {fabOpen && (
                 <div className="absolute bottom-16 right-0 space-y-3 animate-fade-in">
@@ -2354,7 +2467,7 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                     <span className="text-xl">📝</span> Registrar Gasto
                   </button>
                   <button
-                    onClick={() => { setFabOpen(false); setShowConfig(true); }}
+                    onClick={() => { setFabOpen(false); setShowAddProduct(true); }}
                     className="flex items-center gap-3 bg-blue-600 text-white px-5 py-3 rounded-full shadow-xl hover:bg-blue-700 hover:scale-105 transition-all whitespace-nowrap"
                   >
                     <span className="text-xl">📦</span> Agregar Producto
