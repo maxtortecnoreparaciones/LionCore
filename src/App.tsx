@@ -212,6 +212,12 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [productionDashboard, setProductionDashboard] = useState<{totalProduced: number; totalWaste: number; avgRendimiento: number; totalBatches: number; totalCost: number} | null>(null)
   const [rawMaterials, setRawMaterials] = useState<any[]>([])
   const [finalProducts, setFinalProducts] = useState<any[]>([])
+  const [showFruverDashboard, setShowFruverDashboard] = useState(false)
+  const [fruverDashboard, setFruverDashboard] = useState<{ventasHoy: number; mermaHoy: number; gananciaHoy: number; productosCriticos: {name: string; stock: number; diasRestantes: number}[]} | null>(null)
+  const [showWasteModal, setShowWasteModal] = useState(false)
+  const [wasteProduct, setWasteProduct] = useState('')
+  const [wasteQty, setWasteQty] = useState('')
+  const [wasteReason, setWasteReason] = useState('')
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [newProductName, setNewProductName] = useState('')
   const [newProductPrice, setNewProductPrice] = useState('')
@@ -822,10 +828,14 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
       return
     }
     try {
-      const updates: Record<string, number> = {}
-      updates[inlineEditField.field] = val
-      await db.products.update(productId, updates)
-      showNotification('success', 'Actualizado')
+      if (inlineEditField.field === 'price') {
+        await handleQuickPriceChange(productId, val)
+      } else {
+        const updates: Record<string, number> = {}
+        updates[inlineEditField.field] = val
+        await db.products.update(productId, updates)
+        showNotification('success', 'Actualizado')
+      }
       const stockData = await getStockByProduct()
       setInventory(stockData)
     } catch (error) {
@@ -893,6 +903,51 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
       return ((final / raw) * 100).toFixed(1)
     }
     return '0'
+  }
+
+  const loadFruverDashboard = async () => {
+    try {
+      const { getFruverDashboard } = await import('./services/db')
+      const dashboard = await getFruverDashboard()
+      setFruverDashboard(dashboard)
+    } catch (error) {
+      console.error('Error loading fruver dashboard:', error)
+    }
+  }
+
+  const handleRegisterWaste = async () => {
+    if (!wasteProduct || !wasteQty || Number(wasteQty) <= 0) {
+      showNotification('error', 'Completa todos los campos')
+      return
+    }
+    try {
+      const { registerFruverWaste } = await import('./services/db')
+      await registerFruverWaste(wasteProduct, Number(wasteQty), wasteReason || 'Sin motivo')
+      showNotification('success', 'Merma registrada')
+      setWasteProduct('')
+      setWasteQty('')
+      setWasteReason('')
+      setShowWasteModal(false)
+      if (showFruverDashboard) {
+        await loadFruverDashboard()
+      }
+    } catch (error) {
+      console.error('Error registrando merma:', error)
+      showNotification('error', 'Error al registrar merma')
+    }
+  }
+
+  const handleQuickPriceChange = async (productId: number, newPrice: number) => {
+    try {
+      const { updateProductPrice } = await import('./services/db')
+      await updateProductPrice(productId, newPrice)
+      showNotification('success', 'Precio actualizado')
+      const stockData = await getStockByProduct()
+      setInventory(stockData)
+    } catch (error) {
+      console.error('Error updating price:', error)
+      showNotification('error', 'Error al actualizar precio')
+    }
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -1065,6 +1120,22 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                     }`}
                   >
                     🏭
+                  </button>
+                )}
+                {currentBusinessType === 'fruver' && (
+                  <button
+                    onClick={async () => {
+                      setShowFruverDashboard(!showFruverDashboard)
+                      setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowProduction(false)
+                      if (!showFruverDashboard) {
+                        await loadFruverDashboard()
+                      }
+                    }}
+                    className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${
+                      showFruverDashboard ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
+                    }`}
+                  >
+                    📊
                   </button>
                 )}
                 <div className="relative">
@@ -1998,7 +2069,127 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             </div>
           )}
 
-{!showHistory && !showSummary && !showConfig && !showInventory && !showProduction && (
+          {showFruverDashboard && currentBusinessType === 'fruver' && (
+            <div className="bg-white rounded-xl shadow-md overflow-hidden">
+              <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800">🥬 Fruver Dashboard</h2>
+                  <p className="text-sm text-gray-500">Hoy estas ganando o perdiendo</p>
+                </div>
+                <button
+                  onClick={() => { setShowWasteModal(true) }}
+                  className="py-2 px-4 bg-red-100 text-red-700 rounded-lg font-semibold hover:bg-red-200 text-sm"
+                >
+                  🗑️ Registrar Merma
+                </button>
+              </div>
+
+              {fruverDashboard && (
+                <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-green-50 rounded-lg p-3 text-center">
+                    <p className="text-xs text-green-600 font-semibold">Ventas Hoy</p>
+                    <p className="text-lg font-bold text-green-700">{formatCOP(fruverDashboard.ventasHoy)}</p>
+                  </div>
+                  <div className="bg-red-50 rounded-lg p-3 text-center">
+                    <p className="text-xs text-red-600 font-semibold">Merma Hoy</p>
+                    <p className="text-lg font-bold text-red-700">{fruverDashboard.mermaHoy.toFixed(1)} kg</p>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-3 text-center">
+                    <p className="text-xs text-blue-600 font-semibold">Ganancia Hoy</p>
+                    <p className={`text-lg font-bold ${fruverDashboard.gananciaHoy >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
+                      {formatCOP(fruverDashboard.gananciaHoy)}
+                    </p>
+                  </div>
+                  <div className="bg-orange-50 rounded-lg p-3 text-center">
+                    <p className="text-xs text-orange-600 font-semibold">Productos Criticos</p>
+                    <p className="text-lg font-bold text-orange-700">{fruverDashboard.productosCriticos.length}</p>
+                  </div>
+                </div>
+              )}
+
+              {fruverDashboard && fruverDashboard.productosCriticos.length > 0 && (
+                <div className="p-4 border-t border-gray-200">
+                  <h3 className="font-bold text-red-600 mb-3">⚠️ Vende esto hoy o lo pierdes</h3>
+                  <div className="space-y-2">
+                    {fruverDashboard.productosCriticos.map((p, i) => (
+                      <div key={i} className="bg-red-50 border border-red-200 rounded-lg p-3 flex justify-between items-center">
+                        <div>
+                          <p className="font-semibold text-sm">{p.name}</p>
+                          <p className="text-xs text-gray-500">Stock: {p.stock.toFixed(1)} kg</p>
+                        </div>
+                        <span className={`text-xs px-2 py-1 rounded-full font-bold ${p.diasRestantes <= 0 ? 'bg-red-200 text-red-800' : 'bg-orange-200 text-orange-800'}`}>
+                          {p.diasRestantes <= 0 ? 'VENCIDO' : `${p.diasRestantes} dias`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {showWasteModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={() => setShowWasteModal(false)}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-bold text-gray-800">🗑️ Registrar Merma</h2>
+                  <button onClick={() => setShowWasteModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Producto</label>
+                    <select
+                      value={wasteProduct}
+                      onChange={e => setWasteProduct(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    >
+                      <option value="">Seleccionar...</option>
+                      {inventory.map(p => (
+                        <option key={p.name} value={p.name}>{p.name} (Stock: {p.quantity} kg)</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad perdida (kg)</label>
+                    <input
+                      type="number"
+                      value={wasteQty}
+                      onChange={e => setWasteQty(e.target.value)}
+                      placeholder="0.5"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      step="0.1"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Motivo</label>
+                    <input
+                      type="text"
+                      value={wasteReason}
+                      onChange={e => setWasteReason(e.target.value)}
+                      placeholder="Dano, vencimiento, etc."
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    />
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setShowWasteModal(false)}
+                      className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleRegisterWaste}
+                      className="flex-1 py-3 px-4 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700"
+                    >
+                      Registrar Merma
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+{!showHistory && !showSummary && !showConfig && !showInventory && !showProduction && !showFruverDashboard && (
             <>
               <p className="text-center text-sm text-gray-500">Negocio ID: {currentBusinessId}</p>
               

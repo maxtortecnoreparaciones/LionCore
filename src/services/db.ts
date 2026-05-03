@@ -75,6 +75,9 @@ export interface Product {
   cost?: number
   stock?: number
   type?: 'materia_prima' | 'producto_final'
+  fechaCompra?: Date
+  diasVidaUtil?: number
+  unidad?: string
   createdAt: Date
 }
 
@@ -1028,4 +1031,106 @@ export async function getRawMaterials(): Promise<Product[]> {
 export async function getFinalProducts(): Promise<Product[]> {
   const businessId = getCurrentBusinessId()
   return db.products.where({ businessId, type: 'producto_final' }).toArray()
+}
+
+// ==================== FRUVER ====================
+
+export async function registerFruverPurchase(productName: string, kg: number, totalCost: number): Promise<void> {
+  const businessId = getCurrentBusinessId()
+  const costPerKg = kg > 0 ? totalCost / kg : 0
+  const product = await db.products.where({ businessId, name: productName }).first()
+  
+  if (product) {
+    const newStock = (product.stock || 0) + kg
+    await db.products.update(product.id!, {
+      stock: newStock,
+      cost: costPerKg,
+      fechaCompra: new Date(),
+    })
+  }
+
+  const txId = await db.transactions.add({
+    businessId,
+    type: 'compra',
+    total: totalCost,
+    date: new Date(),
+  })
+
+  await db.transaction_items.add({
+    transactionId: txId,
+    productId: product?.id,
+    name: productName,
+    quantity: kg,
+    price: costPerKg,
+    subtotal: totalCost,
+    costUnitario: costPerKg,
+  })
+}
+
+export async function registerFruverWaste(productName: string, kg: number, reason: string): Promise<void> {
+  const businessId = getCurrentBusinessId()
+  const product = await db.products.where({ businessId, name: productName }).first()
+  
+  if (product) {
+    const newStock = (product.stock || 0) - kg
+    await db.products.update(product.id!, { stock: newStock })
+  }
+
+  await db.inventory_adjustments.add({
+    businessId,
+    productName,
+    quantity: -kg,
+    reason: `Merma: ${reason}`,
+    date: new Date(),
+  })
+}
+
+export async function getFruverDashboard(): Promise<{
+  ventasHoy: number
+  mermaHoy: number
+  gananciaHoy: number
+  productosCriticos: { name: string; stock: number; diasRestantes: number }[]
+}> {
+  const businessId = getCurrentBusinessId()
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const ventas = await db.transactions.where({ businessId, type: 'venta' }).filter(tx => {
+    const d = new Date(tx.date)
+    return d >= today
+  }).toArray()
+  const ventasHoy = ventas.reduce((sum, tx) => sum + tx.total, 0)
+
+  const mermas = await db.inventory_adjustments.where('businessId').equals(businessId).filter(adj => {
+    const d = new Date(adj.date)
+    return d >= today && adj.quantity < 0 && adj.reason.includes('Merma')
+  }).toArray()
+  const mermaHoy = mermas.reduce((sum, adj) => sum + Math.abs(adj.quantity), 0)
+
+  const productos = await db.products.where('businessId').equals(businessId).toArray()
+  const productosCriticos = productos
+    .filter(p => p.fechaCompra && p.diasVidaUtil)
+    .map(p => {
+      const fechaCompra = new Date(p.fechaCompra!)
+      const fechaVencimiento = new Date(fechaCompra.getTime() + (p.diasVidaUtil || 0) * 86400000)
+      const diasRestantes = Math.ceil((fechaVencimiento.getTime() - Date.now()) / 86400000)
+      return { name: p.name, stock: p.stock || 0, diasRestantes }
+    })
+    .filter(p => p.diasRestantes <= 2)
+    .sort((a, b) => a.diasRestantes - b.diasRestantes)
+
+  const gananciaHoy = ventasHoy - (ventas.length > 0 ? ventas.reduce((sum, tx) => {
+    return sum + (tx.total * 0.4)
+  }, 0) : 0)
+
+  return { ventasHoy, mermaHoy, gananciaHoy, productosCriticos }
+}
+
+export async function updateProductPrice(productId: number, newPrice: number): Promise<void> {
+  await db.products.update(productId, { price: newPrice })
+}
+
+export function getProductMargin(product: Product): number {
+  if (!product.cost || product.cost === 0) return 0
+  return product.price - product.cost
 }
