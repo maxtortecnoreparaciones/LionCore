@@ -200,6 +200,8 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [adjustProduct, setAdjustProduct] = useState('')
   const [adjustQty, setAdjustQty] = useState(0)
   const [adjustReason, setAdjustReason] = useState('')
+  const [showMoreMenu, setShowMoreMenu] = useState(false)
+  const [fabOpen, setFabOpen] = useState(false)
   const licenseState = getLicenseState()
   const licenseStatusCheck = checkLicenseStatus()
   
@@ -704,36 +706,19 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                 </button>
               )}
               <button
-                onClick={() => { 
+                onClick={() => {
                   if (!isFeatureAllowed('config')) {
                     const msg = getUpgradeMessage('config')
                     setShowUpgradeModal(msg)
                     return
                   }
-                  setShowConfig(!showConfig); setShowSummary(false); setShowHistory(false); 
+                  setShowConfig(!showConfig); setShowSummary(false); setShowHistory(false); setShowInventory(false);
                 }}
-                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                  !isFeatureAllowed('config') ? 'bg-gray-300 text-gray-500 cursor-not-allowed' :
+                className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${
                   showConfig ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
                 }`}
               >
-                {showConfig ? '← Volver' : '⚙️ Config'}
-              </button>
-              <button
-                onClick={handleToggleSummary}
-                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                  showSummary ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
-                }`}
-              >
-                {showSummary ? '← Volver' : '📊 Resumen'}
-              </button>
-              <button
-                onClick={handleToggleHistory}
-                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                  showHistory ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
-                }`}
-              >
-                {showHistory ? '← Volver' : '📋 Historial'}
+                ⚙️
               </button>
               <button
                 onClick={async () => {
@@ -742,65 +727,69 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                     setInventory(stockData)
                   }
                   setShowInventory(!showInventory)
-                  if (showSummary) setShowSummary(false)
-                  if (showHistory) setShowHistory(false)
+                  setShowSummary(false); setShowHistory(false); setShowConfig(false);
                 }}
-                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${
                   showInventory ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
                 }`}
               >
-                {showInventory ? '← Volver' : '📦 Inventario'}
+                📦
               </button>
-              {showHistory && transactions.length > 0 && (
+              <div className="relative">
                 <button
-                  onClick={async () => {
-                    const headers = ['ID', 'Fecha', 'Tipo', 'Producto', 'Cantidad', 'Precio', 'Total']
-                    const rows = []
-                    for (const tx of transactions) {
-                      const items = await db.transaction_items.where('transactionId').equals(tx.id!).toArray()
-                      for (const item of items) {
-                        rows.push([tx.id, new Date(tx.date).toLocaleDateString(), tx.type, item.name, item.quantity, item.price, item.subtotal])
-                      }
-                    }
-                    const csv = [headers, ...rows].map(r => r.join(',')).join('\n')
-                    const blob = new Blob([csv], { type: 'text/csv' })
-                    const url = URL.createObjectURL(blob)
-                    const a = document.createElement('a')
-                    a.href = url
-                    a.download = `transacciones_${new Date().toISOString().split('T')[0]}.csv`
-                    a.click()
-                    URL.revokeObjectURL(url)
-                  }}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors"
+                  onClick={() => setShowMoreMenu(!showMoreMenu)}
+                  className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${
+                    showSummary || showHistory ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
+                  }`}
                 >
-                  📥 CSV
+                  ⋮
                 </button>
-              )}
-              {showInventory && inventory.length > 0 && (
-                <button
-                  onClick={() => {
-                    const headers = ['Producto', 'Stock', 'Producido', 'Vendido', 'Precio']
-                    const rows = inventory.map(item => [
-                      item.name,
-                      item.quantity,
-                      item.totalProduced,
-                      item.totalSold,
-                      item.lastPrice || ''
-                    ])
-                    const csv = [headers, ...rows].map(r => r.join(',')).join('\n')
-                    const blob = new Blob([csv], { type: 'text/csv' })
-                    const url = URL.createObjectURL(blob)
-                    const a = document.createElement('a')
-                    a.href = url
-                    a.download = `inventario_${new Date().toISOString().split('T')[0]}.csv`
-                    a.click()
-                    URL.revokeObjectURL(url)
-                  }}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors"
-                >
-                  📥 CSV
-                </button>
-              )}
+                {showMoreMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-2 z-50">
+                    <button
+                      onClick={() => { handleToggleSummary(); setShowHistory(false); setShowInventory(false); setShowConfig(false); setShowMoreMenu(false); }}
+                      className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <span>📊</span> Resumen
+                    </button>
+                    <button
+                      onClick={() => { handleToggleHistory(); setShowSummary(false); setShowInventory(false); setShowConfig(false); setShowMoreMenu(false); }}
+                      className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <span>📋</span> Historial
+                    </button>
+                    {(showHistory || showSummary) && (
+                      <>
+                        <div className="border-t border-gray-100 my-1"></div>
+                        <button
+                          onClick={async () => {
+                            const headers = ['ID', 'Fecha', 'Tipo', 'Producto', 'Cantidad', 'Precio', 'Total']
+                            const rows = []
+                            for (const tx of transactions) {
+                              const items = await db.transaction_items.where('transactionId').equals(tx.id!).toArray()
+                              for (const item of items) {
+                                rows.push([tx.id, new Date(tx.date).toLocaleDateString(), tx.type, item.name, item.quantity, item.price, item.subtotal])
+                              }
+                            }
+                            const csv = [headers, ...rows].map(r => r.join(',')).join('\n')
+                            const blob = new Blob([csv], { type: 'text/csv' })
+                            const url = URL.createObjectURL(blob)
+                            const a = document.createElement('a')
+                            a.href = url
+                            a.download = `transacciones_${new Date().toISOString().split('T')[0]}.csv`
+                            a.click()
+                            URL.revokeObjectURL(url)
+                            setShowMoreMenu(false)
+                          }}
+                          className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                        >
+                          <span>📥</span> Exportar CSV
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1994,6 +1983,58 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             </div>
           )}
 
+          {!showConfig && !showSummary && !showHistory && !showInventory && !showMoreMenu && (
+            <div className="fixed bottom-6 right-6 z-50">
+              {fabOpen && (
+                <div className="absolute bottom-16 right-0 space-y-2">
+                  <button
+                    onClick={() => {
+                      setMode('venta')
+                      setFabOpen(false)
+                      setShowInventory(false); setShowConfig(false); setShowSummary(false); setShowHistory(false);
+                    }}
+                    className="flex items-center gap-2 bg-green-600 text-white px-4 py-3 rounded-full shadow-lg hover:bg-green-700 transition-all whitespace-nowrap"
+                  >
+                    <span>💰</span> Venta
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowInventory(true)
+                      getStockByProduct().then(setInventory)
+                      setFabOpen(false)
+                    }}
+                    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-3 rounded-full shadow-lg hover:bg-blue-700 transition-all whitespace-nowrap"
+                  >
+                    <span>📦</span> Inventario
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (isFeatureAllowed('gastos')) {
+                        setMode('gasto')
+                        setFabOpen(false)
+                        setShowInventory(false); setShowConfig(false); setShowSummary(false); setShowHistory(false);
+                      } else {
+                        setShowUpgradeModal(getUpgradeMessage('gastos'))
+                        setFabOpen(false)
+                      }
+                    }}
+                    className="flex items-center gap-2 bg-red-600 text-white px-4 py-3 rounded-full shadow-lg hover:bg-red-700 transition-all whitespace-nowrap"
+                  >
+                    <span>📝</span> Gasto
+                  </button>
+                </div>
+              )}
+              <button
+                onClick={() => setFabOpen(!fabOpen)}
+                className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-white text-2xl font-bold transition-all ${
+                  fabOpen ? 'bg-gray-600 rotate-45' : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                +
+              </button>
+            </div>
+          )}
+
           <div className="fixed bottom-2 right-2 z-50">
             <button
               onClick={() => setDebugShow(!debugShow)}
@@ -2293,6 +2334,41 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                   </a>
                 </div>
               </div>
+            </div>
+          )}
+
+          {!showConfig && !showInventory && (
+            <div className="fixed bottom-6 right-6 z-50">
+              {fabOpen && (
+                <div className="absolute bottom-16 right-0 space-y-3 animate-fade-in">
+                  <button
+                    onClick={() => { setMode('venta'); setFabOpen(false) }}
+                    className="flex items-center gap-3 bg-green-600 text-white px-5 py-3 rounded-full shadow-xl hover:bg-green-700 hover:scale-105 transition-all whitespace-nowrap"
+                  >
+                    <span className="text-xl">💰</span> Nueva Venta
+                  </button>
+                  <button
+                    onClick={() => { setMode('gasto'); setFabOpen(false) }}
+                    className="flex items-center gap-3 bg-orange-600 text-white px-5 py-3 rounded-full shadow-xl hover:bg-orange-700 hover:scale-105 transition-all whitespace-nowrap"
+                  >
+                    <span className="text-xl">📝</span> Registrar Gasto
+                  </button>
+                  <button
+                    onClick={() => { setFabOpen(false); setShowConfig(true); }}
+                    className="flex items-center gap-3 bg-blue-600 text-white px-5 py-3 rounded-full shadow-xl hover:bg-blue-700 hover:scale-105 transition-all whitespace-nowrap"
+                  >
+                    <span className="text-xl">📦</span> Agregar Producto
+                  </button>
+                </div>
+              )}
+              <button
+                onClick={() => setFabOpen(!fabOpen)}
+                className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-white text-3xl font-bold transition-all duration-300 ${
+                  fabOpen ? 'bg-gray-600 rotate-45' : 'bg-blue-600 hover:bg-blue-700 hover:scale-110'
+                }`}
+              >
+                +
+              </button>
             </div>
           )}
         </div>
