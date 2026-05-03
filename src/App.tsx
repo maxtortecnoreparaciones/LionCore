@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, updateBusinessType, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, openMesa, addToMesa, closeMesa, removeItemFromMesa, resetAllMesas, InventoryConfig, getInventoryConfig, saveInventoryConfig, adjustInventory, getInventoryMode, createProduction, getProductions, getProductionDashboard, Production, getRawMaterials, getFinalProducts } from './services/db'
+import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, updateBusinessType, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, openMesa, addToMesa, closeMesa, removeItemFromMesa, resetAllMesas, InventoryConfig, getInventoryConfig, saveInventoryConfig, adjustInventory, getInventoryMode, createProduction, getProductions, getProductionDashboard, Production, getRawMaterials, getFinalProducts, createServiceOrder, updateServiceOrderStatus, getServiceOrders, ServiceOrder, upsertCustomer, sendWhatsAppReceipt } from './services/db'
 import { getLicenseState, isFeatureAllowed, activateLicense, checkLicenseStatus, refreshLicenseCheck, getUpgradeMessage, getDeviceId, deactivateLicense, fetchSheetData } from './services/license'
 
 type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
@@ -218,6 +218,17 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [wasteProduct, setWasteProduct] = useState('')
   const [wasteQty, setWasteQty] = useState('')
   const [wasteReason, setWasteReason] = useState('')
+  const [showServices, setShowServices] = useState(false)
+  const [showServiceModal, setShowServiceModal] = useState(false)
+  const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>([])
+  const [serviceClientName, setServiceClientName] = useState('')
+  const [serviceClientPhone, setServiceClientPhone] = useState('')
+  const [serviceDevice, setServiceDevice] = useState('')
+  const [serviceProblem, setServiceProblem] = useState('')
+  const [serviceCost, setServiceCost] = useState('')
+  const [servicePrice, setServicePrice] = useState('')
+  const [customerPhone, setCustomerPhone] = useState('')
+  const [customerName, setCustomerName] = useState('')
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [newProductName, setNewProductName] = useState('')
   const [newProductPrice, setNewProductPrice] = useState('')
@@ -950,6 +961,67 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     }
   }
 
+  const loadServiceOrders = async () => {
+    try {
+      const orders = await getServiceOrders()
+      setServiceOrders(orders)
+    } catch (error) {
+      console.error('Error loading service orders:', error)
+    }
+  }
+
+  const handleCreateServiceOrder = async () => {
+    if (!serviceClientName || !serviceDevice || !serviceProblem) {
+      showNotification('error', 'Completa cliente, equipo y problema')
+      return
+    }
+    try {
+      await createServiceOrder({
+        clientName: serviceClientName,
+        clientPhone: serviceClientPhone,
+        device: serviceDevice,
+        problem: serviceProblem,
+        status: 'recibido',
+        cost: serviceCost ? Number(serviceCost) : undefined,
+        price: servicePrice ? Number(servicePrice) : undefined,
+      })
+      await upsertCustomer(serviceClientName, serviceClientPhone || undefined)
+      showNotification('success', 'Orden de servicio creada')
+      setServiceClientName('')
+      setServiceClientPhone('')
+      setServiceDevice('')
+      setServiceProblem('')
+      setServiceCost('')
+      setServicePrice('')
+      setShowServiceModal(false)
+      await loadServiceOrders()
+    } catch (error) {
+      console.error('Error creating service order:', error)
+      showNotification('error', 'Error al crear orden')
+    }
+  }
+
+  const handleUpdateServiceStatus = async (id: number, status: ServiceOrder['status']) => {
+    try {
+      await updateServiceOrderStatus(id, status)
+      showNotification('success', `Estado actualizado: ${status}`)
+      await loadServiceOrders()
+    } catch (error) {
+      console.error('Error updating status:', error)
+      showNotification('error', 'Error al actualizar estado')
+    }
+  }
+
+  const handleSendWhatsApp = async () => {
+    const product = items.map(i => `${i.producto} x${i.cantidad}`).join(', ')
+    if (customerPhone) {
+      await sendWhatsAppReceipt(customerPhone, product, total)
+    } else {
+      const msg = `Tu compra en LionCore:%0A${product}%0ATotal: $${total.toLocaleString('es-CO')}`
+      window.open(`https://wa.me/573138777115?text=${msg}`, '_blank')
+    }
+  }
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleAgregar()
@@ -1138,6 +1210,20 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                     📊
                   </button>
                 )}
+                <button
+                  onClick={async () => {
+                    setShowServices(!showServices)
+                    setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowProduction(false); setShowFruverDashboard(false)
+                    if (!showServices) {
+                      await loadServiceOrders()
+                    }
+                  }}
+                  className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${
+                    showServices ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
+                  }`}
+                >
+                  🔧
+                </button>
                 <div className="relative">
                 <button
                   onClick={() => setShowMoreMenu(!showMoreMenu)}
@@ -2477,7 +2563,45 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                 </div>
               </div>
 
+              {mode === 'venta' && (
+                <div className="bg-blue-50 rounded-xl p-4 mb-4">
+                  <label className="text-sm font-semibold text-blue-700 mb-2 block">📱 WhatsApp Cliente</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Nombre (opcional)"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      className="flex-1 py-2 px-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                    <input
+                      type="tel"
+                      placeholder="3138777115"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      className="w-32 py-2 px-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-3">
+                {mode === 'venta' && (
+                  <button
+                    onClick={async () => {
+                      if (items.length === 0) return
+                      await handleSendWhatsApp()
+                    }}
+                    disabled={items.length === 0 || loading}
+                    className={`flex-1 py-4 rounded-xl font-bold text-lg transition-colors duration-200 ${
+                      items.length === 0 || loading
+                        ? 'bg-green-300 text-green-500 cursor-not-allowed'
+                        : 'bg-green-600 text-white hover:bg-green-700'
+                    }`}
+                  >
+                    📱 WhatsApp
+                  </button>
+                )}
                 {mode === 'venta' && (
                   <button
                     onClick={handleImprimir}
@@ -2782,7 +2906,177 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             </div>
           )}
 
-          {!showConfig && !showSummary && !showHistory && !showInventory && !showMoreMenu && (
+          {showServices && (
+            <div className="bg-white rounded-xl shadow-md overflow-hidden">
+              <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800">🔧 Servicios Técnicos</h2>
+                  <p className="text-sm text-gray-500">{serviceOrders.length} ordenes</p>
+                </div>
+                <button
+                  onClick={() => setShowServiceModal(true)}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700"
+                >
+                  + Nueva Orden
+                </button>
+              </div>
+
+              {serviceOrders.length === 0 ? (
+                <div className="p-12 text-center text-gray-500">
+                  <div className="text-6xl mb-4">🔧</div>
+                  <p>No hay ordenes de servicio</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-200">
+                  {serviceOrders.map(order => (
+                    <div key={order.id} className="p-4 hover:bg-gray-50">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h3 className="font-semibold text-gray-800">{order.clientName}</h3>
+                          <p className="text-sm text-gray-600">{order.device}</p>
+                          <p className="text-xs text-gray-500 mt-1">{order.problem}</p>
+                        </div>
+                        <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                          order.status === 'recibido' ? 'bg-gray-200 text-gray-700' :
+                          order.status === 'en_proceso' ? 'bg-yellow-200 text-yellow-800' :
+                          order.status === 'terminado' ? 'bg-green-200 text-green-800' :
+                          'bg-blue-200 text-blue-800'
+                        }`}>
+                          {order.status.replace('_', ' ')}
+                        </span>
+                      </div>
+                      {order.price && (
+                        <p className="text-sm font-bold text-green-600 mb-2">
+                          ${order.price.toLocaleString('es-CO')}
+                        </p>
+                      )}
+                      <div className="flex gap-2 mt-2">
+                        {order.status === 'recibido' && order.id && (
+                          <button
+                            onClick={() => handleUpdateServiceStatus(order.id!, 'en_proceso')}
+                            className="text-xs bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600"
+                          >
+                            En proceso
+                          </button>
+                        )}
+                        {order.status === 'en_proceso' && order.id && (
+                          <button
+                            onClick={() => handleUpdateServiceStatus(order.id!, 'terminado')}
+                            className="text-xs bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
+                          >
+                            Terminado
+                          </button>
+                        )}
+                        {order.status === 'terminado' && order.id && (
+                          <button
+                            onClick={async () => {
+                              await handleUpdateServiceStatus(order.id!, 'entregado')
+                              if (order.clientPhone) {
+                                await sendWhatsAppReceipt(order.clientPhone, `Servicio ${order.device}`, order.price || 0)
+                              }
+                            }}
+                            className="text-xs bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                          >
+                            Entregar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {showServiceModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+                <div className="p-6">
+                  <h2 className="text-xl font-bold text-gray-800 mb-4">🔧 Nueva Orden de Servicio</h2>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Nombre del Cliente *</label>
+                      <input
+                        type="text"
+                        value={serviceClientName}
+                        onChange={(e) => setServiceClientName(e.target.value)}
+                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Juan Perez"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Telefono (WhatsApp)</label>
+                      <input
+                        type="tel"
+                        value={serviceClientPhone}
+                        onChange={(e) => setServiceClientPhone(e.target.value)}
+                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="3138777115"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Equipo *</label>
+                      <input
+                        type="text"
+                        value={serviceDevice}
+                        onChange={(e) => setServiceDevice(e.target.value)}
+                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Laptop HP Pavilion"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Problema *</label>
+                      <textarea
+                        value={serviceProblem}
+                        onChange={(e) => setServiceProblem(e.target.value)}
+                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        rows={3}
+                        placeholder="No enciende, pantalla azul..."
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Costo estimado</label>
+                        <input
+                          type="number"
+                          value={serviceCost}
+                          onChange={(e) => setServiceCost(e.target.value)}
+                          className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="50000"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Precio venta</label>
+                        <input
+                          type="number"
+                          value={servicePrice}
+                          onChange={(e) => setServicePrice(e.target.value)}
+                          className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="150000"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="px-6 pb-6 flex gap-3">
+                  <button
+                    onClick={() => setShowServiceModal(false)}
+                    className="flex-1 py-3 px-4 border border-gray-300 rounded-lg font-semibold text-gray-600 hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleCreateServiceOrder}
+                    className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700"
+                  >
+                    Crear Orden
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!showConfig && !showSummary && !showHistory && !showInventory && !showMoreMenu && !showServices && (
             <div className="fixed bottom-6 right-6 z-50">
               {fabOpen && (
                 <div className="absolute bottom-16 right-0 space-y-2">

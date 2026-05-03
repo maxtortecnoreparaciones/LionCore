@@ -74,10 +74,39 @@ export interface Product {
   price: number
   cost?: number
   stock?: number
-  type?: 'materia_prima' | 'producto_final'
+  type?: 'fisico' | 'servicio' | 'licencia' | 'materia_prima' | 'producto_final'
   fechaCompra?: Date
   diasVidaUtil?: number
   unidad?: string
+  licenseKey?: string
+  licenseEmail?: string
+  licenseUsed?: boolean
+  createdAt: Date
+}
+
+export interface ServiceOrder {
+  id?: number
+  businessId: number
+  clientName: string
+  clientPhone: string
+  device: string
+  problem: string
+  status: 'recibido' | 'en_proceso' | 'terminado' | 'entregado'
+  cost?: number
+  price?: number
+  notes?: string
+  createdAt: Date
+  completedAt?: Date
+}
+
+export interface Customer {
+  id?: number
+  businessId: number
+  name: string
+  phone?: string
+  email?: string
+  totalPurchases: number
+  lastPurchase?: Date
   createdAt: Date
 }
 
@@ -172,6 +201,8 @@ class LionCoreDB extends Dexie {
   mesas!: Table<Mesa, number>
   inventory_adjustments!: Table<InventoryAdjustment, number>
   productions!: Table<Production, number>
+  service_orders!: Table<ServiceOrder, number>
+  customers!: Table<Customer, number>
 
   constructor() {
     super('LionCoreDB')
@@ -199,6 +230,13 @@ class LionCoreDB extends Dexie {
 
     this.version(5).stores({
       productions: '++id, businessId, loteId, date, rawMaterialName, finalProductName',
+    }).upgrade(() => {
+      return Promise.resolve()
+    })
+
+    this.version(6).stores({
+      service_orders: '++id, businessId, clientName, clientPhone, status, createdAt',
+      customers: '++id, businessId, name, phone',
     }).upgrade(() => {
       return Promise.resolve()
     })
@@ -1133,4 +1171,61 @@ export async function updateProductPrice(productId: number, newPrice: number): P
 export function getProductMargin(product: Product): number {
   if (!product.cost || product.cost === 0) return 0
   return product.price - product.cost
+}
+
+// ==================== SERVICIOS TECNICOS ====================
+
+export async function createServiceOrder(data: Omit<ServiceOrder, 'id' | 'businessId' | 'createdAt'>): Promise<number> {
+  return db.service_orders.add({
+    ...data,
+    businessId: getCurrentBusinessId(),
+    createdAt: new Date(),
+  })
+}
+
+export async function updateServiceOrderStatus(id: number, status: ServiceOrder['status']): Promise<void> {
+  const updates: Partial<ServiceOrder> = { status }
+  if (status === 'entregado') {
+    updates.completedAt = new Date()
+  }
+  await db.service_orders.update(id, updates)
+}
+
+export async function getServiceOrders(): Promise<ServiceOrder[]> {
+  return db.service_orders.where('businessId').equals(getCurrentBusinessId()).reverse().sortBy('createdAt')
+}
+
+export async function getCustomers(): Promise<Customer[]> {
+  return db.customers.where('businessId').equals(getCurrentBusinessId()).toArray()
+}
+
+export async function upsertCustomer(name: string, phone?: string): Promise<number> {
+  const businessId = getCurrentBusinessId()
+  const existing = await db.customers.where({ businessId, phone }).first()
+  if (existing) {
+    await db.customers.update(existing.id!, { name, totalPurchases: (existing.totalPurchases || 0) + 1, lastPurchase: new Date() })
+    return existing.id!
+  }
+  return db.customers.add({
+    businessId,
+    name,
+    phone,
+    totalPurchases: 1,
+    lastPurchase: new Date(),
+    createdAt: new Date(),
+  })
+}
+
+export async function sendWhatsAppReceipt(phone: string, product: string, total: number): Promise<void> {
+  const msg = `Hola! Tu compra en LionCore:%0AProducto: ${product}%0ATotal: $${total.toLocaleString('es-CO')}%0A¡Gracias por tu compra!`
+  const cleanPhone = phone.replace(/[^0-9]/g, '')
+  const fullPhone = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`
+  window.open(`https://wa.me/${fullPhone}?text=${msg}`, '_blank')
+}
+
+export async function sendWhatsAppLicense(phone: string, product: string, key: string): Promise<void> {
+  const msg = `Hola! Tu licencia:%0AProducto: ${product}%0AClave: ${key}%0A¡Gracias por tu compra!`
+  const cleanPhone = phone.replace(/[^0-9]/g, '')
+  const fullPhone = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`
+  window.open(`https://wa.me/${fullPhone}?text=${msg}`, '_blank')
 }
