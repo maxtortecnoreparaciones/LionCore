@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, updateBusinessType, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, openMesa, addToMesa, closeMesa, removeItemFromMesa, resetAllMesas, InventoryConfig, getInventoryConfig, saveInventoryConfig, adjustInventory, getInventoryMode, createProduction, getProductions, getProductionDashboard, Production, getRawMaterials, getFinalProducts, createServiceOrder, updateServiceOrderStatus, getServiceOrders, ServiceOrder, upsertCustomer, sendWhatsAppReceipt } from './services/db'
+import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, updateBusinessType, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, openMesa, addToMesa, closeMesa, removeItemFromMesa, resetAllMesas, InventoryConfig, getInventoryConfig, saveInventoryConfig, adjustInventory, getInventoryMode, createProduction, getProductions, getProductionDashboard, Production, getRawMaterials, getFinalProducts, createServiceOrder, updateServiceOrderStatus, getServiceOrders, ServiceOrder, upsertCustomer, sendWhatsAppReceipt, getWarehouses, Warehouse, createWarehouse, deleteWarehouse, getWarehouseStock, transferStock, WarehouseStock } from './services/db'
 import { getLicenseState, isFeatureAllowed, activateLicense, checkLicenseStatus, refreshLicenseCheck, getUpgradeMessage, getDeviceId, deactivateLicense, fetchSheetData } from './services/license'
 
 type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
@@ -229,6 +229,17 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [servicePrice, setServicePrice] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [customerName, setCustomerName] = useState('')
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([])
+  const [selectedWarehouse, setSelectedWarehouse] = useState<number | null>(null)
+  const [warehouseStock, setWarehouseStock] = useState<WarehouseStock[]>([])
+  const [showWarehouseModal, setShowWarehouseModal] = useState(false)
+  const [showTransferModal, setShowTransferModal] = useState(false)
+  const [newWarehouseName, setNewWarehouseName] = useState('')
+  const [newWarehouseAddress, setNewWarehouseAddress] = useState('')
+  const [transferFrom, setTransferFrom] = useState<number | ''>('')
+  const [transferTo, setTransferTo] = useState<number | ''>('')
+  const [transferProduct, setTransferProduct] = useState('')
+  const [transferQty, setTransferQty] = useState('')
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [newProductName, setNewProductName] = useState('')
   const [newProductPrice, setNewProductPrice] = useState('')
@@ -312,6 +323,7 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
       if (current) setCurrentBusinessType(current.tipo || 'pos')
     })
     setInvConfig(getInventoryConfig())
+    loadWarehouses()
   }, [currentBusinessId])
 
   useEffect(() => {
@@ -1019,6 +1031,78 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     } else {
       const msg = `Tu compra en LionCore:%0A${product}%0ATotal: $${total.toLocaleString('es-CO')}`
       window.open(`https://wa.me/573138777115?text=${msg}`, '_blank')
+    }
+  }
+
+  const loadWarehouses = async () => {
+    try {
+      const wh = await getWarehouses()
+      setWarehouses(wh)
+      if (wh.length > 0 && !selectedWarehouse) {
+        const def = wh.find(w => w.isDefault) || wh[0]
+        setSelectedWarehouse(def.id!)
+      }
+    } catch (error) {
+      console.error('Error loading warehouses:', error)
+    }
+  }
+
+  const loadWarehouseStock = async (warehouseId: number) => {
+    try {
+      const stock = await getWarehouseStock(warehouseId)
+      setWarehouseStock(stock)
+    } catch (error) {
+      console.error('Error loading warehouse stock:', error)
+    }
+  }
+
+  const handleCreateWarehouse = async () => {
+    if (!newWarehouseName) {
+      showNotification('error', 'Nombre de bodega requerido')
+      return
+    }
+    try {
+      await createWarehouse(newWarehouseName, newWarehouseAddress || undefined)
+      showNotification('success', 'Bodega creada')
+      setNewWarehouseName('')
+      setNewWarehouseAddress('')
+      setShowWarehouseModal(false)
+      await loadWarehouses()
+    } catch (error) {
+      console.error('Error creating warehouse:', error)
+      showNotification('error', 'Error al crear bodega')
+    }
+  }
+
+  const handleDeleteWarehouse = async (id: number) => {
+    try {
+      await deleteWarehouse(id)
+      showNotification('success', 'Bodega eliminada')
+      if (selectedWarehouse === id) setSelectedWarehouse(null)
+      await loadWarehouses()
+    } catch (error) {
+      console.error('Error deleting warehouse:', error)
+      showNotification('error', 'Error al eliminar bodega')
+    }
+  }
+
+  const handleTransferStock = async () => {
+    if (!transferFrom || !transferTo || !transferProduct || !transferQty) {
+      showNotification('error', 'Completa todos los campos')
+      return
+    }
+    try {
+      await transferStock(Number(transferFrom), Number(transferTo), transferProduct, Number(transferQty))
+      showNotification('success', 'Transferencia completada')
+      setTransferFrom('')
+      setTransferTo('')
+      setTransferProduct('')
+      setTransferQty('')
+      setShowTransferModal(false)
+      if (selectedWarehouse) await loadWarehouseStock(selectedWarehouse)
+    } catch (error: any) {
+      console.error('Error transferring stock:', error)
+      showNotification('error', error.message || 'Error en transferencia')
     }
   }
 
@@ -2988,6 +3072,87 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             </div>
           )}
 
+          {currentBusinessType === 'service_store' && (
+            <div className="bg-white rounded-xl shadow-md overflow-hidden">
+              <div className="p-4 border-b border-gray-200">
+                <div className="flex justify-between items-center mb-3">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-800">📦 Bodegas</h2>
+                    <p className="text-sm text-gray-500">{warehouses.length} ubicaciones</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowTransferModal(true)}
+                      className="bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-semibold hover:bg-orange-700"
+                    >
+                      🔄 Transferir
+                    </button>
+                    <button
+                      onClick={() => setShowWarehouseModal(true)}
+                      className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700"
+                    >
+                      + Bodega
+                    </button>
+                  </div>
+                </div>
+
+                {warehouses.length > 0 && (
+                  <div className="flex gap-2 mb-3 overflow-x-auto">
+                    {warehouses.map(wh => (
+                      <div key={wh.id} className="flex items-center gap-1">
+                        <button
+                          key={wh.id}
+                          onClick={() => {
+                            setSelectedWarehouse(wh.id!)
+                            loadWarehouseStock(wh.id!)
+                          }}
+                          className={`px-3 py-1 rounded-full text-sm font-semibold whitespace-nowrap ${
+                            selectedWarehouse === wh.id
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                        >
+                          {wh.name} {wh.isDefault ? '⭐' : ''}
+                        </button>
+                        {!wh.isDefault && (
+                          <button
+                            onClick={() => handleDeleteWarehouse(wh.id!)}
+                            className="text-red-500 hover:text-red-700 text-sm px-1"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {selectedWarehouse && warehouseStock.length > 0 && (
+                  <div className="divide-y divide-gray-200 max-h-60 overflow-y-auto">
+                    {warehouseStock.map(stock => (
+                      <div key={stock.id} className="py-2 flex justify-between items-center">
+                        <div>
+                          <span className="font-medium text-gray-800">{stock.productName}</span>
+                          {stock.category && (
+                            <span className="ml-2 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                              {stock.category}
+                            </span>
+                          )}
+                          {stock.imei && (
+                            <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded">
+                              IMEI: {stock.imei}
+                            </span>
+                          )}
+                        </div>
+                        <span className="font-bold text-gray-800">{stock.quantity}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {showServiceModal && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -3674,6 +3839,124 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                       Ajustar Stock
                     </button>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showWarehouseModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+                <div className="p-6">
+                  <h2 className="text-xl font-bold text-gray-800 mb-4">📦 Nueva Bodega</h2>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Nombre *</label>
+                      <input
+                        type="text"
+                        value={newWarehouseName}
+                        onChange={(e) => setNewWarehouseName(e.target.value)}
+                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Ej: Principal, Sucursal Norte..."
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Dirección (opcional)</label>
+                      <input
+                        type="text"
+                        value={newWarehouseAddress}
+                        onChange={(e) => setNewWarehouseAddress(e.target.value)}
+                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Calle 123 #45-67"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="px-6 pb-6 flex gap-3">
+                  <button
+                    onClick={() => setShowWarehouseModal(false)}
+                    className="flex-1 py-3 px-4 border border-gray-300 rounded-lg font-semibold text-gray-600 hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleCreateWarehouse}
+                    className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700"
+                  >
+                    Crear Bodega
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showTransferModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+                <div className="p-6">
+                  <h2 className="text-xl font-bold text-gray-800 mb-4">🔄 Transferir Stock</h2>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Desde</label>
+                      <select
+                        value={transferFrom}
+                        onChange={(e) => setTransferFrom(Number(e.target.value) || '')}
+                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Seleccionar bodega...</option>
+                        {warehouses.map(wh => (
+                          <option key={wh.id} value={wh.id}>{wh.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Hacia</label>
+                      <select
+                        value={transferTo}
+                        onChange={(e) => setTransferTo(Number(e.target.value) || '')}
+                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Seleccionar bodega...</option>
+                        {warehouses.map(wh => (
+                          <option key={wh.id} value={wh.id}>{wh.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Producto</label>
+                      <input
+                        type="text"
+                        value={transferProduct}
+                        onChange={(e) => setTransferProduct(e.target.value)}
+                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Nombre del producto"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Cantidad</label>
+                      <input
+                        type="number"
+                        value={transferQty}
+                        onChange={(e) => setTransferQty(e.target.value)}
+                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="px-6 pb-6 flex gap-3">
+                  <button
+                    onClick={() => setShowTransferModal(false)}
+                    className="flex-1 py-3 px-4 border border-gray-300 rounded-lg font-semibold text-gray-600 hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleTransferStock}
+                    className="flex-1 py-3 px-4 bg-orange-600 text-white rounded-lg font-bold hover:bg-orange-700"
+                  >
+                    Transferir
+                  </button>
                 </div>
               </div>
             </div>

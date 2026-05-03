@@ -52,10 +52,10 @@ export const businessTemplates: Record<BusinessType, {
     emoji: '🥬',
   },
   service_store: {
-    unidad: 'servicios',
+    unidad: 'unidades',
     showProduccion: false,
     showGastos: true,
-    showCompra: false,
+    showCompra: true,
     label: 'Service Store VIP',
     emoji: '🔧',
   },
@@ -105,6 +105,38 @@ export interface ServiceOrder {
   notes?: string
   createdAt: Date
   completedAt?: Date
+}
+
+export interface Customer {
+  id?: number
+  businessId: number
+  name: string
+  phone?: string
+  email?: string
+  totalPurchases: number
+  lastPurchase?: Date
+  createdAt: Date
+}
+
+export interface Warehouse {
+  id?: number
+  businessId: number
+  name: string
+  address?: string
+  isDefault: boolean
+  createdAt: Date
+}
+
+export interface WarehouseStock {
+  id?: number
+  businessId: number
+  warehouseId: number
+  productName: string
+  quantity: number
+  imei?: string
+  serial?: string
+  category?: 'accesorio' | 'celular' | 'repuesto' | 'general'
+  lastUpdated: Date
 }
 
 export interface Customer {
@@ -211,6 +243,8 @@ class LionCoreDB extends Dexie {
   productions!: Table<Production, number>
   service_orders!: Table<ServiceOrder, number>
   customers!: Table<Customer, number>
+  warehouses!: Table<Warehouse, number>
+  warehouse_stock!: Table<WarehouseStock, number>
 
   constructor() {
     super('LionCoreDB')
@@ -245,6 +279,13 @@ class LionCoreDB extends Dexie {
     this.version(6).stores({
       service_orders: '++id, businessId, clientName, clientPhone, status, createdAt',
       customers: '++id, businessId, name, phone',
+    }).upgrade(() => {
+      return Promise.resolve()
+    })
+
+    this.version(7).stores({
+      warehouses: '++id, businessId, name, isDefault',
+      warehouse_stock: '++id, businessId, warehouseId, productName, category',
     }).upgrade(() => {
       return Promise.resolve()
     })
@@ -966,7 +1007,7 @@ export function getInventoryMode(businessType: BusinessType): { showInventory: b
     case 'deshidratados':
       return { showInventory: true, blockSales: false, allowNegative: false, label: 'Por kg' }
     case 'service_store':
-      return { showInventory: false, blockSales: false, allowNegative: true, label: 'Solo servicios (sin inventario)' }
+      return { showInventory: true, blockSales: false, allowNegative: true, label: 'Unidades (accesorios, celulares, partes)' }
     default:
       return { showInventory: true, blockSales: false, allowNegative: true, label: 'Por unidades' }
   }
@@ -1238,4 +1279,101 @@ export async function sendWhatsAppLicense(phone: string, product: string, key: s
   const cleanPhone = phone.replace(/[^0-9]/g, '')
   const fullPhone = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`
   window.open(`https://wa.me/${fullPhone}?text=${msg}`, '_blank')
+}
+
+// ==================== BODEGAS ====================
+
+export async function createWarehouse(name: string, address?: string): Promise<number> {
+  const businessId = getCurrentBusinessId()
+  const existing = await db.warehouses.where('businessId').equals(businessId).count()
+  return db.warehouses.add({
+    businessId,
+    name,
+    address,
+    isDefault: existing === 0,
+    createdAt: new Date(),
+  })
+}
+
+export async function getWarehouses(): Promise<Warehouse[]> {
+  return db.warehouses.where('businessId').equals(getCurrentBusinessId()).sortBy('name')
+}
+
+export async function getDefaultWarehouse(): Promise<Warehouse | undefined> {
+  return db.warehouses.where('businessId').equals(getCurrentBusinessId()).and(w => w.isDefault).first()
+}
+
+export async function deleteWarehouse(id: number): Promise<void> {
+  await db.warehouse_stock.where('warehouseId').equals(id).delete()
+  await db.warehouses.delete(id)
+}
+
+export async function updateWarehouseStock(warehouseId: number, productName: string, quantity: number, category?: string, imei?: string, serial?: string): Promise<number> {
+  const businessId = getCurrentBusinessId()
+  const existing = await db.warehouse_stock
+    .where({ businessId, warehouseId, productName })
+    .first()
+  if (existing) {
+    await db.warehouse_stock.update(existing.id!, {
+      quantity: existing.quantity + quantity,
+      lastUpdated: new Date(),
+    })
+    return existing.id!
+  }
+  return db.warehouse_stock.add({
+    businessId,
+    warehouseId,
+    productName,
+    quantity,
+    category: category as any,
+    imei,
+    serial,
+    lastUpdated: new Date(),
+  })
+}
+
+export async function getWarehouseStock(warehouseId: number): Promise<WarehouseStock[]> {
+  return db.warehouse_stock
+    .where({ businessId: getCurrentBusinessId(), warehouseId })
+    .sortBy('productName')
+}
+
+export async function getAllWarehouseStock(): Promise<WarehouseStock[]> {
+  return db.warehouse_stock
+    .where('businessId')
+    .equals(getCurrentBusinessId())
+    .sortBy('productName')
+}
+
+export async function transferStock(fromWarehouseId: number, toWarehouseId: number, productName: string, quantity: number): Promise<void> {
+  const fromStock = await db.warehouse_stock
+    .where({ businessId: getCurrentBusinessId(), warehouseId: fromWarehouseId, productName })
+    .first()
+  if (!fromStock || fromStock.quantity < quantity) {
+    throw new Error('Stock insuficiente')
+  }
+  await db.warehouse_stock.update(fromStock.id!, {
+    quantity: fromStock.quantity - quantity,
+    lastUpdated: new Date(),
+  })
+  const toStock = await db.warehouse_stock
+    .where({ businessId: getCurrentBusinessId(), warehouseId: toWarehouseId, productName })
+    .first()
+  if (toStock) {
+    await db.warehouse_stock.update(toStock.id!, {
+      quantity: toStock.quantity + quantity,
+      lastUpdated: new Date(),
+    })
+  } else {
+    await db.warehouse_stock.add({
+      businessId: getCurrentBusinessId(),
+      warehouseId: toWarehouseId,
+      productName,
+      quantity,
+      category: fromStock.category,
+      imei: fromStock.imei,
+      serial: fromStock.serial,
+      lastUpdated: new Date(),
+    })
+  }
 }
