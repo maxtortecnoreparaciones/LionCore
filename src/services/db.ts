@@ -2,7 +2,7 @@ import Dexie, { Table } from 'dexie'
 
 // ==================== TIPOS ====================
 
-export type BusinessType = 'pos' | 'deshidratados' | 'restaurante' | 'fruver'
+export type BusinessType = 'pos' | 'deshidratados' | 'restaurante' | 'fruver' | 'service_store'
 
 export interface Business {
   id?: number
@@ -50,6 +50,14 @@ export const businessTemplates: Record<BusinessType, {
     showCompra: true,
     label: 'Fruver',
     emoji: '🥬',
+  },
+  service_store: {
+    unidad: 'servicios',
+    showProduccion: false,
+    showGastos: true,
+    showCompra: false,
+    label: 'Service Store VIP',
+    emoji: '🔧',
   },
 }
 
@@ -957,6 +965,8 @@ export function getInventoryMode(businessType: BusinessType): { showInventory: b
       return { showInventory: true, blockSales: false, allowNegative: true, label: 'Por kg (flexible)' }
     case 'deshidratados':
       return { showInventory: true, blockSales: false, allowNegative: false, label: 'Por kg' }
+    case 'service_store':
+      return { showInventory: false, blockSales: false, allowNegative: true, label: 'Solo servicios (sin inventario)' }
     default:
       return { showInventory: true, blockSales: false, allowNegative: true, label: 'Por unidades' }
   }
