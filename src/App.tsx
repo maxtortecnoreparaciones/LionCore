@@ -222,6 +222,11 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [quickAdjustQty, setQuickAdjustQty] = useState('')
   const [quickAdjustType, setQuickAdjustType] = useState<'+' | '-'>('+')
   const [showPostSaleTrigger, setShowPostSaleTrigger] = useState(false)
+  const [inlineEditField, setInlineEditField] = useState<{productId: number; field: 'price'|'stock'|'cost'; value: string} | null>(null)
+  const [showReferrals, setShowReferrals] = useState(false)
+  const [appVersion] = useState('1.0.0')
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+  const [latestVersion, setLatestVersion] = useState('')
   const licenseState = getLicenseState()
   const licenseStatusCheck = checkLicenseStatus()
   
@@ -232,6 +237,16 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     console.log('🔍 plan:', licenseState.plan)
     console.log('🔍 Modos disponibles:', getAvailableModes())
     
+    fetch('https://raw.githubusercontent.com/maxtortecnoreparaciones/LionCore/main/version.json', { signal: AbortSignal.timeout(5000) })
+      .then(r => r.json())
+      .then(data => {
+        if (data.version && data.version !== appVersion) {
+          setLatestVersion(data.version)
+          setUpdateAvailable(true)
+        }
+      })
+      .catch(() => {})
+    
     if (licenseState.isActivated) {
       refreshLicenseCheck().then(result => {
         if (!result.success) {
@@ -240,7 +255,7 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
       })
     }
     if (licenseState.isActivated && licenseStatusCheck.daysLeft >= 0 && licenseStatusCheck.daysLeft <= 7) {
-      showNotification('error', `Tu licencia expira en ${licenseStatusCheck.daysLeft} días`)
+      showNotification('error', `Tu licencia expira en ${licenseStatusCheck.daysLeft} dias`)
     }
     if (licenseState.isActivated && licenseStatusCheck.isExpired) {
       showNotification('error', 'Tu licencia ha expirado')
@@ -788,6 +803,28 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     }
   }
 
+  const handleInlineSave = async (productId: number) => {
+    if (!inlineEditField) return
+    const val = Number(inlineEditField.value)
+    if (isNaN(val) || val < 0) {
+      showNotification('error', 'Valor invalido')
+      setInlineEditField(null)
+      return
+    }
+    try {
+      const updates: Record<string, number> = {}
+      updates[inlineEditField.field] = val
+      await db.products.update(productId, updates)
+      showNotification('success', 'Actualizado')
+      const stockData = await getStockByProduct()
+      setInventory(stockData)
+    } catch (error) {
+      console.error('Error inline update:', error)
+      showNotification('error', 'Error al actualizar')
+    }
+    setInlineEditField(null)
+  }
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleAgregar()
@@ -849,6 +886,31 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
               >
                 Activar ahora
               </button>
+            </div>
+          )}
+
+          {updateAvailable && (
+            <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-blue-800 text-lg">🔄 Nueva version disponible: {latestVersion}</h3>
+                <p className="text-blue-700 text-sm">Tu version: {appVersion}. Descarga la ultima version para tener las mejoras.</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setUpdateAvailable(false)}
+                  className="px-4 py-2 border border-blue-300 text-blue-700 rounded-lg font-semibold hover:bg-blue-100"
+                >
+                  Ahora no
+                </button>
+                <a
+                  href="https://github.com/maxtortecnoreparaciones/LionCore/releases"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700"
+                >
+                  Descargar
+                </a>
+              </div>
             </div>
           )}
 
@@ -971,6 +1033,19 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                         </button>
                       </>
                     )}
+                    <div className="border-t border-gray-100 my-1"></div>
+                    <button
+                      onClick={() => { setShowReferrals(true); setShowMoreMenu(false); }}
+                      className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <span>🎁</span> Invitar y ganar
+                    </button>
+                    <button
+                      onClick={() => { setShowConfig(true); setShowSummary(false); setShowHistory(false); setShowInventory(false); setShowMoreMenu(false); }}
+                      className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <span>⚙️</span> Configuracion
+                    </button>
                   </div>
                 )}
               </div>
@@ -1591,9 +1666,25 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                           <div className="space-y-1 mb-3">
                             <div className="flex justify-between">
                               <span className="text-xs text-gray-500">Stock</span>
-                              <span className={`text-lg font-bold ${item.quantity > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                {item.quantity}
-                              </span>
+                              {inlineEditField?.productId === index && inlineEditField?.field === 'stock' ? (
+                                <input
+                                  type="number"
+                                  value={inlineEditField.value}
+                                  onChange={e => setInlineEditField({ ...inlineEditField, value: e.target.value })}
+                                  onBlur={() => handleInlineSave(index)}
+                                  onKeyDown={e => e.key === 'Enter' && handleInlineSave(index)}
+                                  className="w-20 px-2 py-0.5 text-right text-lg font-bold border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  autoFocus
+                                />
+                              ) : (
+                                <span
+                                  className={`text-lg font-bold cursor-pointer hover:bg-blue-50 rounded px-1 ${item.quantity > 0 ? 'text-green-600' : 'text-red-500'}`}
+                                  onClick={() => setInlineEditField({ productId: index, field: 'stock', value: String(item.quantity) })}
+                                  title="Click para editar"
+                                >
+                                  {item.quantity}
+                                </span>
+                              )}
                             </div>
                             {currentTpl.unidad === 'kg' && item.quantity > 0 && (
                               <div className="text-xs text-gray-400 text-right">{currentTpl.unidad}</div>
@@ -1603,9 +1694,25 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                           <div className="border-t border-gray-100 pt-2">
                             <div className="flex justify-between items-center">
                               <span className="text-xs text-gray-500">Precio</span>
-                              <span className="text-sm font-semibold text-blue-600">
-                                {item.lastPrice ? formatCOP(item.lastPrice) : '—'}
-                              </span>
+                              {inlineEditField?.productId === index && inlineEditField?.field === 'price' ? (
+                                <input
+                                  type="number"
+                                  value={inlineEditField.value}
+                                  onChange={e => setInlineEditField({ ...inlineEditField, value: e.target.value })}
+                                  onBlur={() => handleInlineSave(index)}
+                                  onKeyDown={e => e.key === 'Enter' && handleInlineSave(index)}
+                                  className="w-24 px-2 py-0.5 text-right text-sm font-semibold border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  autoFocus
+                                />
+                              ) : (
+                                <span
+                                  className="text-sm font-semibold text-blue-600 cursor-pointer hover:bg-blue-50 rounded px-1"
+                                  onClick={() => setInlineEditField({ productId: index, field: 'price', value: String(item.lastPrice || 0) })}
+                                  title="Click para editar"
+                                >
+                                  {item.lastPrice ? formatCOP(item.lastPrice) : '—'}
+                                </span>
+                              )}
                             </div>
                           </div>
                           
@@ -2200,6 +2307,52 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                     💳 Pagar aquí
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {showReferrals && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={() => setShowReferrals(false)}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 text-center" onClick={e => e.stopPropagation()}>
+                <div className="text-5xl mb-3">🎁</div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-2">Invita y gana</h2>
+                <p className="text-gray-600 mb-4">Invita a un amigo y gana $10.000 en credito</p>
+                
+                <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                  <p className="text-sm text-gray-500 mb-2">Tu mensaje de invitacion:</p>
+                  <p className="text-sm font-mono bg-white p-3 rounded border text-left">
+                    Hola! Te recomiendo LionCore, el mejor POS para tu negocio. Registrate aqui 👇
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <button
+                    onClick={() => {
+                      const msg = encodeURIComponent('Hola! Te recomiendo LionCore, el mejor POS para tu negocio. Registrate aqui!')
+                      window.open(`https://wa.me/573138777115?text=${msg}`, '_blank')
+                      setShowReferrals(false)
+                    }}
+                    className="w-full py-3 px-4 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 flex items-center justify-center gap-2"
+                  >
+                    <span>📱</span> Enviar por WhatsApp
+                  </button>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText('https://lioncore.app/ref')
+                      showNotification('success', 'Link copiado!')
+                    }}
+                    className="w-full py-3 px-4 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50"
+                  >
+                    📋 Copiar link
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setShowReferrals(false)}
+                  className="mt-3 text-sm text-gray-500 hover:text-gray-700"
+                >
+                  Cerrar
+                </button>
               </div>
             </div>
           )}
