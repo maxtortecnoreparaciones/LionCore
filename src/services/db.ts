@@ -294,6 +294,20 @@ export async function createTransaction(
     }))
   )
   
+  if (type === 'venta') {
+    const config = getInventoryConfig()
+    for (const item of items) {
+      if (!item.productId) continue
+      const product = await db.products.get(item.productId)
+      if (!product) continue
+      const currentStock = product.stock ?? 0
+      const newStock = currentStock - item.quantity
+      if (config.sellWithoutStock || newStock >= 0 || config.allowNegative) {
+        await db.products.update(item.productId, { stock: newStock })
+      }
+    }
+  }
+  
   return transactionId
 }
 

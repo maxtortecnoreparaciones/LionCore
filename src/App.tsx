@@ -207,6 +207,21 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [newProductPrice, setNewProductPrice] = useState('')
   const [newProductCost, setNewProductCost] = useState('')
   const [newProductStock, setNewProductStock] = useState('')
+  const [showEditProduct, setShowEditProduct] = useState(false)
+  const [editProductId, setEditProductId] = useState<number | null>(null)
+  const [editProductName, setEditProductName] = useState('')
+  const [editProductPrice, setEditProductPrice] = useState('')
+  const [editProductCost, setEditProductCost] = useState('')
+  const [editProductStock, setEditProductStock] = useState('')
+  const [showQuickPurchase, setShowQuickPurchase] = useState(false)
+  const [quickPurchaseProduct, setQuickPurchaseProduct] = useState('')
+  const [quickPurchaseQty, setQuickPurchaseQty] = useState('')
+  const [quickPurchaseCost, setQuickPurchaseCost] = useState('')
+  const [showQuickAdjust, setShowQuickAdjust] = useState(false)
+  const [quickAdjustProduct, setQuickAdjustProduct] = useState('')
+  const [quickAdjustQty, setQuickAdjustQty] = useState('')
+  const [quickAdjustType, setQuickAdjustType] = useState<'+' | '-'>('+')
+  const [showPostSaleTrigger, setShowPostSaleTrigger] = useState(false)
   const licenseState = getLicenseState()
   const licenseStatusCheck = checkLicenseStatus()
   
@@ -585,7 +600,11 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
 
       setItems([])
       setProductionMeta({ pesoEntrada: '', pesoSalida: '', desperdicio: '', tiempo: '', notas: '' })
-      showNotification('success', 'Transacción guardada correctamente')
+      showNotification('success', 'Transaccion guardada correctamente')
+
+      if (mode === 'venta' && !licenseState.isActivated) {
+        setTimeout(() => setShowPostSaleTrigger(true), 800)
+      }
 
       if (showHistory) {
         await loadTransactions()
@@ -640,6 +659,132 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     } catch (error) {
       console.error('Error al agregar producto:', error)
       showNotification('error', 'Error al agregar el producto')
+    }
+  }
+
+  const openEditProduct = async (productName: string) => {
+    const product = await db.products.where({ businessId: currentBusinessId, name: productName }).first()
+    if (product) {
+      setEditProductId(product.id || null)
+      setEditProductName(product.name)
+      setEditProductPrice(String(product.price))
+      setEditProductCost(product.cost ? String(product.cost) : '')
+      setEditProductStock(product.stock ? String(product.stock) : '0')
+      setShowEditProduct(true)
+    }
+  }
+
+  const handleUpdateProduct = async () => {
+    if (!editProductName.trim() || editProductId === null) {
+      showNotification('error', 'Selecciona un producto válido')
+      return
+    }
+    if (!editProductPrice || Number(editProductPrice) <= 0) {
+      showNotification('error', 'Ingresa un precio válido')
+      return
+    }
+    try {
+      await db.products.update(editProductId, {
+        name: editProductName.trim(),
+        price: Number(editProductPrice),
+        cost: editProductCost ? Number(editProductCost) : 0,
+        stock: editProductStock ? Number(editProductStock) : 0,
+      })
+      setShowEditProduct(false)
+      setEditProductId(null)
+      showNotification('success', 'Producto actualizado correctamente')
+      const stockData = await getStockByProduct()
+      setInventory(stockData)
+    } catch (error) {
+      console.error('Error al actualizar producto:', error)
+      showNotification('error', 'Error al actualizar el producto')
+    }
+  }
+
+  const openPurchaseModal = (productName: string) => {
+    if (!isFeatureAllowed('compra')) {
+      setShowUpgradeModal(getUpgradeMessage('compra'))
+      return
+    }
+    setQuickPurchaseProduct(productName)
+    setQuickPurchaseQty('')
+    setQuickPurchaseCost('')
+    setShowQuickPurchase(true)
+  }
+
+  const handleQuickPurchase = async () => {
+    if (!quickPurchaseQty || Number(quickPurchaseQty) <= 0) {
+      showNotification('error', 'Ingresa una cantidad valida')
+      return
+    }
+    try {
+      const product = await db.products.where({ businessId: currentBusinessId, name: quickPurchaseProduct }).first()
+      if (!product) {
+        showNotification('error', 'Producto no encontrado')
+        return
+      }
+      const qty = Number(quickPurchaseQty)
+      const cost = quickPurchaseCost ? Number(quickPurchaseCost) : product.cost || 0
+      const txId = await db.transactions.add({
+        businessId: currentBusinessId,
+        type: 'compra',
+        total: qty * cost,
+        date: new Date(),
+      })
+      await db.transaction_items.add({
+        transactionId: txId,
+        productId: product.id,
+        name: product.name,
+        quantity: qty,
+        price: cost,
+        subtotal: qty * cost,
+        costUnitario: cost,
+      })
+      const newStock = (product.stock || 0) + qty
+      await db.products.update(product.id!, { stock: newStock, cost })
+      setShowQuickPurchase(false)
+      showNotification('success', `Compra registrada: ${qty} unidades de ${quickPurchaseProduct}`)
+      const stockData = await getStockByProduct()
+      setInventory(stockData)
+    } catch (error) {
+      console.error('Error al registrar compra:', error)
+      showNotification('error', 'Error al registrar la compra')
+    }
+  }
+
+  const openQuickAdjust = (productName: string) => {
+    if (!isFeatureAllowed('config')) {
+      setShowUpgradeModal(getUpgradeMessage('config'))
+      return
+    }
+    setQuickAdjustProduct(productName)
+    setQuickAdjustQty('')
+    setQuickAdjustType('+')
+    setShowQuickAdjust(true)
+  }
+
+  const handleQuickAdjust = async () => {
+    if (!quickAdjustQty || Number(quickAdjustQty) <= 0) {
+      showNotification('error', 'Ingresa una cantidad valida')
+      return
+    }
+    try {
+      const product = await db.products.where({ businessId: currentBusinessId, name: quickAdjustProduct }).first()
+      if (!product) {
+        showNotification('error', 'Producto no encontrado')
+        return
+      }
+      const qty = quickAdjustType === '+' ? Number(quickAdjustQty) : -Number(quickAdjustQty)
+      const newStock = (product.stock || 0) + qty
+      await db.products.update(product.id!, { stock: newStock })
+      await adjustInventory(quickAdjustProduct, qty, 'Ajuste rapido desde inventario')
+      setShowQuickAdjust(false)
+      showNotification('success', `Stock ajustado: ${quickAdjustType === '+' ? '+' : '-'}${quickAdjustQty}`)
+      const stockData = await getStockByProduct()
+      setInventory(stockData)
+    } catch (error) {
+      console.error('Error al ajustar stock:', error)
+      showNotification('error', 'Error al ajustar el stock')
     }
   }
 
@@ -1419,18 +1564,21 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                       .map((item, index) => (
                         <div
                           key={index}
-                          className="bg-gradient-to-br from-white to-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-lg hover:border-blue-300 transition-all duration-200 cursor-pointer"
-                          onClick={() => {
-                            setProducto(item.name)
-                            if (item.lastPrice) setPrecio(String(item.lastPrice))
-                            setShowInventory(false)
-                          }}
+                          className="bg-gradient-to-br from-white to-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-lg hover:border-blue-300 transition-all duration-200"
                         >
                           <div className="flex justify-between items-start mb-2">
-                            <h3 className="font-bold text-gray-800 text-sm truncate flex-1" title={item.name}>
+                            <h3
+                              className="font-bold text-gray-800 text-sm truncate flex-1 cursor-pointer"
+                              title={item.name}
+                              onClick={() => {
+                                setProducto(item.name)
+                                if (item.lastPrice) setPrecio(String(item.lastPrice))
+                                setShowInventory(false)
+                              }}
+                            >
                               {item.name}
                             </h3>
-                            <div className="flex gap-1">
+                            <div className="flex gap-1 ml-2">
                               {invConfig.lowStockAlert && item.quantity <= invConfig.lowStockThreshold && item.quantity > 0 && (
                                 <span className="text-xs px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700" title="Stock bajo">⚠️</span>
                               )}
@@ -1466,6 +1614,40 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                               <span>📦 {item.totalProduced || 0}</span>
                               <span>💰 {item.totalSold || 0}</span>
                             </div>
+                          </div>
+
+                          {item.quantity < 0 && (
+                            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-center">
+                              <p className="text-xs text-red-600 font-semibold">⚠️ Stock negativo</p>
+                              <p className="text-xs text-red-500 mt-1">Ajusta o registra compra</p>
+                            </div>
+                          )}
+
+                          <div className="flex gap-1.5 mt-2">
+                            <button
+                              onClick={() => openPurchaseModal(item.name)}
+                              disabled={!isFeatureAllowed('compra')}
+                              className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                                !isFeatureAllowed('compra') ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-green-100 text-green-700 hover:bg-green-200'
+                              }`}
+                            >
+                              + Compra
+                            </button>
+                            <button
+                              onClick={() => openQuickAdjust(item.name)}
+                              disabled={!isFeatureAllowed('config')}
+                              className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                                !isFeatureAllowed('config') ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                              }`}
+                            >
+                              Ajustar
+                            </button>
+                            <button
+                              onClick={() => openEditProduct(item.name)}
+                              className="flex-1 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-200 transition-colors"
+                            >
+                              ✏️
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -2446,6 +2628,217 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                     </button>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {showEditProduct && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={() => setShowEditProduct(false)}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-bold text-gray-800">✏️ Editar Producto</h2>
+                  <button onClick={() => setShowEditProduct(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del producto</label>
+                    <input
+                      type="text"
+                      value={editProductName}
+                      onChange={e => setEditProductName(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      onKeyDown={e => e.key === 'Enter' && handleUpdateProduct()}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Precio de venta</label>
+                      <input
+                        type="number"
+                        value={editProductPrice}
+                        onChange={e => setEditProductPrice(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        onKeyDown={e => e.key === 'Enter' && handleUpdateProduct()}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Costo</label>
+                      <input
+                        type="number"
+                        value={editProductCost}
+                        onChange={e => setEditProductCost(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        onKeyDown={e => e.key === 'Enter' && handleUpdateProduct()}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Stock actual</label>
+                    <input
+                      type="number"
+                      value={editProductStock}
+                      onChange={e => setEditProductStock(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      onKeyDown={e => e.key === 'Enter' && handleUpdateProduct()}
+                    />
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setShowEditProduct(false)}
+                      className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleUpdateProduct}
+                      className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+                    >
+                      Guardar Cambios
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showQuickPurchase && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={() => setShowQuickPurchase(false)}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-bold text-gray-800">🛒 + Compra: {quickPurchaseProduct}</h2>
+                  <button onClick={() => setShowQuickPurchase(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+                </div>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
+                      <input
+                        type="number"
+                        value={quickPurchaseQty}
+                        onChange={e => setQuickPurchaseQty(e.target.value)}
+                        placeholder="0"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        onKeyDown={e => e.key === 'Enter' && handleQuickPurchase()}
+                        autoFocus
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Costo unitario</label>
+                      <input
+                        type="number"
+                        value={quickPurchaseCost}
+                        onChange={e => setQuickPurchaseCost(e.target.value)}
+                        placeholder="$0"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        onKeyDown={e => e.key === 'Enter' && handleQuickPurchase()}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setShowQuickPurchase(false)}
+                      className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleQuickPurchase}
+                      className="flex-1 py-3 px-4 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700"
+                    >
+                      Registrar Compra
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showQuickAdjust && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={() => setShowQuickAdjust(false)}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-bold text-gray-800">🔧 Ajustar: {quickAdjustProduct}</h2>
+                  <button onClick={() => setShowQuickAdjust(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+                </div>
+                <div className="space-y-4">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setQuickAdjustType('+')}
+                      className={`flex-1 py-2 rounded-lg font-semibold ${quickAdjustType === '+' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                    >
+                      + Sumar
+                    </button>
+                    <button
+                      onClick={() => setQuickAdjustType('-')}
+                      className={`flex-1 py-2 rounded-lg font-semibold ${quickAdjustType === '-' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                    >
+                      - Restar
+                    </button>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
+                    <input
+                      type="number"
+                      value={quickAdjustQty}
+                      onChange={e => setQuickAdjustQty(e.target.value)}
+                      placeholder="0"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      onKeyDown={e => e.key === 'Enter' && handleQuickAdjust()}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setShowQuickAdjust(false)}
+                      className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleQuickAdjust}
+                      className="flex-1 py-3 px-4 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700"
+                    >
+                      Ajustar Stock
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showPostSaleTrigger && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={() => setShowPostSaleTrigger(false)}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center" onClick={e => e.stopPropagation()}>
+                <div className="text-4xl mb-3">✅</div>
+                <h3 className="text-lg font-bold text-gray-800 mb-2">Venta registrada</h3>
+                <p className="text-gray-600 text-sm mb-4">¿Sabes cuanto ganaste realmente?</p>
+                {!licenseState.isActivated ? (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-3">Activa PRO para ver tu ganancia neta</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setShowPostSaleTrigger(false); setShowLicenseModal(true) }}
+                        className="flex-1 py-2 px-4 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 text-sm"
+                      >
+                        Activar PRO
+                      </button>
+                      <button
+                        onClick={() => setShowPostSaleTrigger(false)}
+                        className="py-2 px-4 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50"
+                      >
+                        Cerrar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowPostSaleTrigger(false)}
+                    className="py-2 px-6 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+                  >
+                    Ver en Resumen
+                  </button>
+                )}
               </div>
             </div>
           )}
