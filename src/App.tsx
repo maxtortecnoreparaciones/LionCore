@@ -241,6 +241,8 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [transferProduct, setTransferProduct] = useState('')
   const [transferQty, setTransferQty] = useState('')
   const [showAddProduct, setShowAddProduct] = useState(false)
+  const [showOnboarding, setShowOnboarding] = useState(false)
+  const [onboardingStep, setOnboardingStep] = useState(1)
   const [newProductName, setNewProductName] = useState('')
   const [newProductPrice, setNewProductPrice] = useState('')
   const [newProductCost, setNewProductCost] = useState('')
@@ -317,10 +319,17 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   }, [businessConfig, currentBusinessId])
 
   useEffect(() => {
-    getAllBusinesses().then(bizs => {
+    getAllBusinesses().then(async bizs => {
       setBusinesses(bizs)
       const current = bizs.find(b => b.id === currentBusinessId)
       if (current) setCurrentBusinessType(current.tipo || 'pos')
+      const onboardingDone = localStorage.getItem('lioncore_onboarding_done')
+      if (!onboardingDone && bizs.length <= 1) {
+        const productCount = await db.products.where('businessId').equals(currentBusinessId).count()
+        if (productCount === 0) {
+          setShowOnboarding(true)
+        }
+      }
     })
     setInvConfig(getInventoryConfig())
     loadWarehouses()
@@ -602,13 +611,13 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     if (mode === 'venta') {
       const invConfig = getInventoryConfig()
       const invMode = getInventoryMode(currentBusinessType)
-      const blockSales = !invConfig.sellWithoutStock && !invMode.allowNegative
+      const blockSales = invMode.blockSales && !invConfig.sellWithoutStock
 
       if (blockSales) {
         for (const item of items) {
           const stock = await getProductStock(item.producto)
           if (stock < item.cantidad) {
-            showNotification('error', `No tienes stock disponible para "${item.producto}". Stock actual: ${stock}`)
+            showNotification('error', `Stock insuficiente para "${item.producto}". Disponible: ${stock}, requerido: ${item.cantidad}`)
             return
           }
         }
@@ -3956,6 +3965,143 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                     className="flex-1 py-3 px-4 bg-orange-600 text-white rounded-lg font-bold hover:bg-orange-700"
                   >
                     Transferir
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showOnboarding && (
+            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100] p-4">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+                <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-6 text-center">
+                  <div className="text-5xl mb-3">
+                    {onboardingStep === 1 ? '🦁' : onboardingStep === 2 ? '🏪' : '📦'}
+                  </div>
+                  <h2 className="text-2xl font-bold text-white">
+                    {onboardingStep === 1 ? 'Bienvenido a LionCore' : onboardingStep === 2 ? 'Tu Negocio' : 'Tu Primer Producto'}
+                  </h2>
+                </div>
+
+                <div className="p-6">
+                  <div className="flex justify-center gap-1 mb-6">
+                    {[1,2,3].map(s => (
+                      <div key={s} className={`h-2 w-8 rounded-full ${
+                        s <= onboardingStep ? 'bg-blue-600' : 'bg-gray-200'
+                      }`} />
+                    ))}
+                  </div>
+
+                  {onboardingStep === 1 && (
+                    <div className="text-center">
+                      <p className="text-gray-600 mb-4">
+                        El POS inteligente que funciona <strong>sin internet</strong> y se adapta a tu negocio.
+                      </p>
+                      <ul className="text-left space-y-2 text-sm text-gray-600">
+                        <li>✅ Vende productos y servicios</li>
+                        <li>📦 Controla tu inventario</li>
+                        <li>🔧 Servicios técnicos con CRM</li>
+                        <li>📊 Reportes de ganancias</li>
+                        <li>📱 Funciona en redes WiFi locales</li>
+                      </ul>
+                    </div>
+                  )}
+
+                  {onboardingStep === 2 && (
+                    <div className="text-center">
+                      <p className="text-gray-600 mb-4">
+                        Elige el tipo de negocio que mejor se adapte a ti:
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(Object.keys(businessTemplates) as BusinessType[]).map(tipo => {
+                          const tpl = businessTemplates[tipo]
+                          return (
+                            <button
+                              key={tipo}
+                              onClick={() => {
+                                if (newBusinessName) {
+                                  createBusiness(newBusinessName, tipo).then(id => {
+                                    setCurrentBusinessId(id)
+                                    window.location.reload()
+                                  })
+                                }
+                              }}
+                              className="p-3 rounded-xl border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all text-center"
+                            >
+                              <span className="text-3xl">{tpl.emoji}</span>
+                              <p className="text-sm font-semibold mt-1">{tpl.label}</p>
+                            </button>
+                          )
+                        })}
+                      </div>
+                      <div className="mt-4">
+                        <input
+                          type="text"
+                          placeholder="Nombre de tu negocio"
+                          value={newBusinessName}
+                          onChange={e => setNewBusinessName(e.target.value)}
+                          className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {onboardingStep === 3 && (
+                    <div className="text-center">
+                      <p className="text-gray-600 mb-4">
+                        Agrega tu primer producto para empezar a vender:
+                      </p>
+                      <div className="space-y-3">
+                        <input
+                          type="text"
+                          placeholder="Nombre del producto"
+                          value={newProductName}
+                          onChange={e => setNewProductName(e.target.value)}
+                          className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Precio de venta"
+                          value={newProductPrice}
+                          onChange={e => setNewProductPrice(e.target.value)}
+                          className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="px-6 pb-6 flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowOnboarding(false)
+                      localStorage.setItem('lioncore_onboarding_done', 'true')
+                    }}
+                    className="flex-1 py-3 px-4 border border-gray-300 rounded-lg font-semibold text-gray-600 hover:bg-gray-50"
+                  >
+                    Saltar
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (onboardingStep === 3) {
+                        if (newProductName && newProductPrice) {
+                          await db.products.add({
+                            businessId: currentBusinessId,
+                            name: newProductName,
+                            price: Number(newProductPrice),
+                            createdAt: new Date(),
+                          })
+                          showNotification('success', 'Producto creado!')
+                        }
+                        setShowOnboarding(false)
+                        localStorage.setItem('lioncore_onboarding_done', 'true')
+                      } else {
+                        setOnboardingStep(s => s + 1)
+                      }
+                    }}
+                    className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700"
+                  >
+                    {onboardingStep === 3 ? 'Comenzar' : 'Siguiente'}
                   </button>
                 </div>
               </div>

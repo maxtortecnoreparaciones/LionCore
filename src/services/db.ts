@@ -999,15 +999,15 @@ export async function getInventoryAdjustments(): Promise<InventoryAdjustment[]> 
 export function getInventoryMode(businessType: BusinessType): { showInventory: boolean; blockSales: boolean; allowNegative: boolean; label: string } {
   switch (businessType) {
     case 'pos':
-      return { showInventory: true, blockSales: false, allowNegative: true, label: 'Por unidades' }
+      return { showInventory: true, blockSales: true, allowNegative: false, label: 'Por unidades' }
     case 'restaurante':
-      return { showInventory: false, blockSales: false, allowNegative: true, label: 'Por porciones (oculto)' }
+      return { showInventory: false, blockSales: false, allowNegative: true, label: 'Por porciones (sin inventario)' }
     case 'fruver':
-      return { showInventory: true, blockSales: false, allowNegative: true, label: 'Por kg (flexible)' }
+      return { showInventory: true, blockSales: false, allowNegative: true, label: 'Por kg (flexible, con merma)' }
     case 'deshidratados':
-      return { showInventory: true, blockSales: false, allowNegative: false, label: 'Por kg' }
+      return { showInventory: true, blockSales: true, allowNegative: false, label: 'Por kg (control exacto)' }
     case 'service_store':
-      return { showInventory: true, blockSales: false, allowNegative: true, label: 'Unidades (accesorios, celulares, partes)' }
+      return { showInventory: true, blockSales: true, allowNegative: true, label: 'Unidades (accesorios, celulares, servicios)' }
     default:
       return { showInventory: true, blockSales: false, allowNegative: true, label: 'Por unidades' }
   }
