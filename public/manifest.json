@@ -1,0 +1,18 @@
+{
+  "name": "LionCore POS",
+  "short_name": "LionCore",
+  "description": "Sistema POS offline-first",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "orientation": "any",
+  "lang": "es-CO",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
