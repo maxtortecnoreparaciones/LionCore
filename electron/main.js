@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { startServer, getLocalIP } from './server.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -21,11 +22,18 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:5173')
     mainWindow.webContents.openDevTools()
   } else {
-    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
+    mainWindow.loadURL('http://localhost:3456')
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  try {
+    await startServer()
+    const ip = getLocalIP()
+    console.log(`🌐 LionCore disponible en la red: http://${ip}:3456`)
+  } catch (err) {
+    console.error('Error al iniciar servidor:', err)
+  }
   createWindow()
 
   app.on('activate', () => {

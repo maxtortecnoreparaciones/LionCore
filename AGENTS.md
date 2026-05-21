@@ -1,0 +1,79 @@
+# LionCore POS — Agent Context
+
+## Architecture
+- **Stack**: React + TypeScript + Vite + Tailwind CSS v4 + Dexie.js (IndexedDB)
+- **Build**: `npm run build` (tsc + vite build) / `npm run dev` (vite dev)
+- **Desktop**: Electron via `npm run electron:dev` / `npm run electron:build`
+- **Offline-first**: PWA Service Worker (`public/sw.js`) + IndexedDB
+
+## Business Types
+5 tipos en `src/services/db.ts` (`businessTemplates`): `pos`, `deshidratados`, `restaurante`, `fruver`, `service_store`. Cada uno define `unidad`, `showProduccion`, `showGastos`, `showCompra`, `label`, `emoji`.
+
+## Key Files
+- `src/App.tsx` (~2523 lines) — UI principal con todos los módulos integrados (refactorizado: Header, 6 modales, TransactionForm, 8 vistas extraídos)
+- `src/services/db.ts` — DB schema v7, CRUD, business logic (~1410 lines)
+- `src/services/license.ts` — Validación Google Sheet, DeviceId, plan FREE/PRO, offline 72h
+- `src/services/registration.ts` — Registro de usuarios vía Google Apps Script webhook
+- `src/services/registration.gs` — Código Google Apps Script para desplegar como Web App
+- `electron/main.js` — Electron entry: inicia Express server en puerto 3456, luego loadURL
+- `electron/server.js` — Express API (mesas, pedidos, WebSocket) + QR endpoint
+- `src/components/views/` — 8 vistas extraídas (History, Summary, Config, Inventory, Production, Fruver, Services, Warehouses)
+- `src/utils/format.ts` — formatCOP, formatDate, getTypeStyle
+
+## Database Schema (v7)
+Tables: `businesses`, `products`, `transactions`, `transaction_items`, `transaction_meta`, `inventory_adjustments`, `productions`, `service_orders`, `customers`, `mesas`, `warehouses`, `warehouse_stock`.
+
+## License & Plans
+- **FREE**: Ventas + Exportar + Inventario + Producción (deshidratados)
+- **PRO**: Todas las funciones (compra, gastos, config)
+- Activación: email + Google Sheet (columna "Licencias") o registro nuevo
+- Offline grace: 72h desde último check online
+
+## Registration Flow (#118)
+1. Banner "Registrarse" → modal con nombre, email, negocio, tipo
+2. POST a Google Apps Script webhook (no-cors fallback GET)
+3. Webhook escribe en sheet "Registros" y auto-agrega licencia FREE 1 año en "Licencias"
+4. App guarda `saveLicenseState({ plan: 'free', isActivated: true })` localmente
+5. Recarga → usuario tiene FREE activo
+
+## GitHub Issues
+- **Closed (implementados)**: #43-#50, #55, #57-#61, #63-#65, #69, #87-#96, #111-#122
+- **Open**: #123-#125 (ver abajo)
+
+## Issues Abiertos
+- #123 — Servicios técnicos visibles en template restaurante (bug, corregido)
+- #124 — Servidor Express no carga en .exe (bug, corregido: loadURL + /api/ip)
+- #125 — Cocina no permite avanzar estados de platos (enhancement, implementado: status pendiente/preparando/listo)
+- #126 — QR de pago no carga en modo producción (bug, corregido: ruta relativa)
+
+## Common Commands
+```bash
+npm run build          # Build production
+npm run dev            # Dev server
+npm run electron:dev   # Electron dev (Vite + Express)
+npm run electron:build # Build Windows .exe portable
+```
+
+## Build Warnings
+- `[INEFFECTIVE_DYNAMIC_IMPORT]` — cosmético, db.ts importado estática y dinámicamente
+- `[PLUGIN_TIMINGS]` — cosmético, Tailwind generate timing
+
+## Known Issues / Edge Cases
+- **Registration**: Google Apps Script POST puede fallar por CORS; `no-cors` fallback GET intenta registrar igual
+- **Profit Blur**: Se aplica a usuarios FREE y no activados; overlay "Actualiza a PRO" dirige a modal de licencia
+- **Margin auto-calc**: Precio se recalcula automáticamente al cambiar costo o margen; ambos formularios (nuevo/editar producto)
+- **Inventory History**: Carga todos los ajustes del negocio actual, filtro por nombre de producto
+
+## Electron Server
+- `electron/server.js` (108 líneas) tiene API REST + WebSocket + QR endpoint
+- Puerto 3456, accesible desde la red local (`0.0.0.0`)
+- Endpoints: `GET /api/mesas`, `POST /api/mesas/:id/pedidos`, `GET /api/pedidos`, `POST /api/pedidos/:id/estado`, `GET /api/ip`
+- WebSocket: broadcast de actualizaciones en tiempo real (pedido_nuevo, pedido_actualizado)
+- Catch-all SPA: `/{*path}` sirve dist/index.html
+- EN producción: Electron carga `http://localhost:3456` (no loadFile)
+- Datos en memoria (no persistidos en servidor, solo en IndexedDB del cliente)
+
+## Cocina Status Flow
+- Cada item de orden tiene status: `pendiente` (default) → `preparando` → `listo`
+- CocinaView muestra badges de color y botones para avanzar estados
+- `setOrderItemStatus(mesaId, itemIndex, status)` en db.ts

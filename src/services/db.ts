@@ -208,7 +208,7 @@ export interface Mesa {
   businessId: number
   name: string
   status: 'disponible' | 'abierta' | 'ocupada' | 'cuenta'
-  orderItems: { name: string; quantity: number; price: number; subtotal: number }[]
+  orderItems: { name: string; quantity: number; price: number; subtotal: number; status?: 'pendiente' | 'preparando' | 'listo' }[]
   total: number
   createdAt: Date
   closedAt?: Date
@@ -901,7 +901,7 @@ export async function addToMesa(mesaId: number, item: { name: string; quantity: 
     existing.quantity += item.quantity
     existing.subtotal = existing.quantity * existing.price
   } else {
-    mesa.orderItems.push(item)
+    mesa.orderItems.push({ ...item, status: 'pendiente' })
   }
 
   mesa.total = mesa.orderItems.reduce((sum, o) => sum + o.subtotal, 0)
@@ -909,7 +909,14 @@ export async function addToMesa(mesaId: number, item: { name: string; quantity: 
   await db.mesas.update(mesaId, { orderItems: mesa.orderItems, total: mesa.total, status: mesa.status })
 }
 
-export async function closeMesa(mesaId: number): Promise<void> {
+export async function setOrderItemStatus(mesaId: number, itemIndex: number, status: 'pendiente' | 'preparando' | 'listo'): Promise<void> {
+  const mesa = await db.mesas.get(mesaId)
+  if (!mesa || !mesa.orderItems[itemIndex]) return
+  mesa.orderItems[itemIndex].status = status
+  await db.mesas.update(mesaId, { orderItems: mesa.orderItems })
+}
+
+export async function closeMesa(mesaId: number, paymentMethod?: string): Promise<void> {
   const mesa = await db.mesas.get(mesaId)
   if (!mesa || mesa.orderItems.length === 0) return
 
@@ -919,6 +926,11 @@ export async function closeMesa(mesaId: number): Promise<void> {
     total: mesa.total,
     date: new Date(),
   })
+
+  if (paymentMethod) {
+    await db.transaction_meta.add({ transactionId, key: 'payment_method', value: paymentMethod })
+    await db.transaction_meta.add({ transactionId, key: 'mesa', value: mesa.name })
+  }
 
   for (const item of mesa.orderItems) {
     await db.transaction_items.add({
@@ -955,6 +967,31 @@ export async function resetAllMesas(): Promise<void> {
   for (let i = 1; i <= 12; i++) {
     await createMesa('Mesa', i)
   }
+}
+
+export async function setMesaStatus(mesaId: number, status: Mesa['status']): Promise<void> {
+  await db.mesas.update(mesaId, { status })
+}
+
+export async function moveMesaItems(fromMesaId: number, toMesaId: number): Promise<void> {
+  const from = await db.mesas.get(fromMesaId)
+  const to = await db.mesas.get(toMesaId)
+  if (!from || !to) return
+
+  const mergedItems = [...to.orderItems]
+  for (const item of from.orderItems) {
+    const existing = mergedItems.find(o => o.name === item.name)
+    if (existing) {
+      existing.quantity += item.quantity
+      existing.subtotal = existing.quantity * existing.price
+    } else {
+      mergedItems.push({ ...item })
+    }
+  }
+
+  const newTotal = mergedItems.reduce((sum, o) => sum + o.subtotal, 0)
+  await db.mesas.update(toMesaId, { orderItems: mergedItems, total: newTotal, status: 'ocupada' })
+  await db.mesas.update(fromMesaId, { status: 'disponible', orderItems: [], total: 0 })
 }
 
 // ==================== INVENTARIO ====================

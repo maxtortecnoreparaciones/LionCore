@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
-  "releaseDate": "2026-05-02",
-  "notes": "Initial release"
+  "version": "2.0.0",
+  "releaseDate": "2026-05-20",
+  "notes": "Full refactor: 37 components extracted, Kitchen status flow, Cash payment, Express v5, QR fixes"
 }

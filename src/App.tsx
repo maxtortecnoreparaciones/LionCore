@@ -1,6 +1,37 @@
 import { useState, useEffect } from 'react'
-import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, updateBusinessType, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, openMesa, addToMesa, closeMesa, removeItemFromMesa, resetAllMesas, InventoryConfig, getInventoryConfig, saveInventoryConfig, adjustInventory, getInventoryMode, createProduction, getProductions, getProductionDashboard, Production, getRawMaterials, getFinalProducts, createServiceOrder, updateServiceOrderStatus, getServiceOrders, ServiceOrder, upsertCustomer, sendWhatsAppReceipt, getWarehouses, Warehouse, createWarehouse, deleteWarehouse, getWarehouseStock, transferStock, WarehouseStock } from './services/db'
-import { getLicenseState, isFeatureAllowed, activateLicense, checkLicenseStatus, refreshLicenseCheck, getUpgradeMessage, getDeviceId, deactivateLicense, fetchSheetData } from './services/license'
+import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, updateBusinessType, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, resetAllMesas, InventoryConfig, getInventoryConfig, saveInventoryConfig, adjustInventory, getInventoryMode, createProduction, getProductions, getProductionDashboard, Production, getRawMaterials, getFinalProducts, createServiceOrder, updateServiceOrderStatus, getServiceOrders, ServiceOrder, upsertCustomer, sendWhatsAppReceipt, getWarehouses, Warehouse, createWarehouse, deleteWarehouse, getWarehouseStock, transferStock, WarehouseStock, getProducts, Product } from './services/db'
+import { getLicenseState, isFeatureAllowed, activateLicense, checkLicenseStatus, refreshLicenseCheck, getUpgradeMessage, getDeviceId, deactivateLicense, fetchSheetData, saveLicenseState } from './services/license'
+import RestaurantModule from './components/restaurant/RestaurantModule'
+import AppHeader from './components/layout/AppHeader'
+import LicenseModal from './components/modals/LicenseModal'
+import DeviceModal from './components/modals/DeviceModal'
+import UpgradeModal from './components/modals/UpgradeModal'
+import PaymentQrModal from './components/modals/PaymentQrModal'
+import ReferralsModal from './components/modals/ReferralsModal'
+import InvAdjustModal from './components/modals/InvAdjustModal'
+import TransactionForm from './components/pos/TransactionForm'
+import HistoryView from './components/views/HistoryView'
+import SummaryView from './components/views/SummaryView'
+import { ConfigView } from './components/views/ConfigView'
+import InventoryView from './components/views/InventoryView'
+import ProductionView from './components/views/ProductionView'
+import { FruverView } from './components/views/FruverView'
+import ServicesView from './components/views/ServicesView'
+import WarehousesView from './components/views/WarehousesView'
+import { formatCOP } from './utils/format'
+import InvoicePreview from './components/modals/InvoicePreview'
+import WasteModal from './components/modals/WasteModal'
+import AddProductModal from './components/modals/AddProductModal'
+import EditProductModal from './components/modals/EditProductModal'
+import QuickPurchaseModal from './components/modals/QuickPurchaseModal'
+import QuickAdjustModal from './components/modals/QuickAdjustModal'
+import NewWarehouseModal from './components/modals/NewWarehouseModal'
+import TransferStockModal from './components/modals/TransferStockModal'
+import ServiceOrderModal from './components/modals/ServiceOrderModal'
+import NewBusinessModal from './components/modals/NewBusinessModal'
+import LicenseExpiredModal from './components/modals/LicenseExpiredModal'
+import PostSaleTriggerModal from './components/modals/PostSaleTriggerModal'
+import OnboardingModal from './components/modals/OnboardingModal'
 
 type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
 
@@ -13,111 +44,6 @@ interface Item {
 
 interface TransactionWithMeta extends Transaction {
   meta?: Record<string, string>
-}
-
-const formatCOP = (value: number): string => {
-  return new Intl.NumberFormat('es-CO', {
-    style: 'currency',
-    currency: 'COP',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value)
-}
-
-const formatDate = (date: Date | string): string => {
-  const d = new Date(date)
-  return d.toLocaleDateString('es-CO', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-const getTypeStyle = (type: string): string => {
-  switch (type) {
-    case 'venta':
-      return 'bg-green-100 text-green-700'
-    case 'compra':
-      return 'bg-blue-100 text-blue-700'
-    case 'gasto':
-      return 'bg-red-100 text-red-700'
-    case 'produccion':
-      return 'bg-purple-100 text-purple-700'
-    default:
-      return 'bg-gray-100 text-gray-700'
-  }
-}
-
-const InvoicePreview = ({ mode, items, total, onClose }: { mode: Mode; items: Item[]; total: number; onClose: () => void }) => {
-  const fecha = new Date().toLocaleString('es-CO')
-  const numFactura = Math.floor(Math.random() * 900000) + 100000
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-        <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-          <h2 className="text-xl font-bold text-gray-800">Factura #{numFactura}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
-        </div>
-
-        <div className="p-6">
-          <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold text-gray-800">LIONCORE POS</h1>
-            <p className="text-sm text-gray-500">{fecha}</p>
-            <p className="text-sm text-gray-500 uppercase font-semibold">{mode}</p>
-          </div>
-
-          <div className="border-t border-b border-gray-300 py-4 mb-4">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-gray-600 border-b border-gray-200">
-                  <th className="text-left pb-2">Producto</th>
-                  <th className="text-center pb-2">Cant.</th>
-                  <th className="text-right pb-2">Valor</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={item.id} className="border-b border-gray-100">
-                    <td className="py-2">{item.producto}</td>
-                    <td className="py-2 text-center">x{item.cantidad}</td>
-                    <td className="py-2 text-right">{formatCOP(item.cantidad * item.precio)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="flex justify-between items-center text-xl font-bold">
-            <span>TOTAL</span>
-            <span className="text-blue-600">{formatCOP(total)}</span>
-          </div>
-
-          <div className="text-center mt-8 text-sm text-gray-500">
-            <p>¡Gracias por su compra!</p>
-            <p>LionCore POS - Sistema de Punto de Venta</p>
-          </div>
-        </div>
-
-        <div className="p-6 border-t border-gray-200 flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 py-3 px-4 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors"
-          >
-            Cerrar
-          </button>
-          <button
-            onClick={() => window.print()}
-            className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-          >
-            Imprimir
-          </button>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 function App() {
@@ -156,8 +82,6 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [showConfig, setShowConfig] = useState(false)
   const [showInventory, setShowInventory] = useState(false)
   const [inventory, setInventory] = useState<{name: string; quantity: number; totalProduced: number; totalSold: number; lastPrice?: number; pesoEntrada?: number; pesoSalida?: number; tiempo?: number; notas?: string}[]>([])
-  const [productSuggestions, setProductSuggestions] = useState<{name: string; stock: number; lastPrice?: number}[]>([])
-  const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [inventorySearch, setInventorySearch] = useState('')
   const [businessConfig, setBusinessConfig] = useState(() => {
     const saved = localStorage.getItem(`costConfig_${currentBusinessId}`)
@@ -195,6 +119,13 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [mesaProductQty, setMesaProductQty] = useState(1)
   const [mesaSelectedProduct, setMesaSelectedProduct] = useState('')
   const [mesaSelectedPrice, setMesaSelectedPrice] = useState(0)
+  const [showCocina, setShowCocina] = useState(() => localStorage.getItem('lioncore_showCocina') === 'true')
+  const [serverInfo, setServerInfo] = useState<{ip: string; url: string; qr: string | null} | null>(null)
+  const [showServerInfo, setShowServerInfo] = useState(false)
+  const [products, setProducts] = useState<Product[]>([])
+  const [paymentMethod, setPaymentMethod] = useState('')
+  const [showMoveMesaModal, setShowMoveMesaModal] = useState(false)
+  const [moveTargetMesaId, setMoveTargetMesaId] = useState<number | null>(null)
   const [invConfig, setInvConfig] = useState<InventoryConfig>(() => getInventoryConfig())
   const [showInvAdjustModal, setShowInvAdjustModal] = useState(false)
   const [adjustProduct, setAdjustProduct] = useState('')
@@ -242,7 +173,6 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [transferQty, setTransferQty] = useState('')
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
-  const [onboardingStep, setOnboardingStep] = useState(1)
   const [newProductName, setNewProductName] = useState('')
   const [newProductPrice, setNewProductPrice] = useState('')
   const [newProductCost, setNewProductCost] = useState('')
@@ -264,7 +194,7 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [showPostSaleTrigger, setShowPostSaleTrigger] = useState(false)
   const [inlineEditField, setInlineEditField] = useState<{productId: number; field: 'price'|'stock'|'cost'; value: string} | null>(null)
   const [showReferrals, setShowReferrals] = useState(false)
-  const [appVersion] = useState('1.0.0')
+  const [appVersion] = useState('2.0.0')
   const [updateAvailable, setUpdateAvailable] = useState(false)
   const [latestVersion, setLatestVersion] = useState('')
   const licenseState = getLicenseState()
@@ -333,6 +263,7 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     })
     setInvConfig(getInventoryConfig())
     loadWarehouses()
+    getProducts().then(setProducts)
   }, [currentBusinessId])
 
   useEffect(() => {
@@ -346,6 +277,41 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
       })
     }
   }, [currentBusinessId, currentBusinessType])
+
+  useEffect(() => {
+    let ws: WebSocket | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout>
+    const connect = () => {
+      try {
+        ws = new WebSocket(`ws://${window.location.hostname}:3456`)
+        ws.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data)
+            if (msg.type === 'sync' && msg.data?.mesas) {
+              setMesas(msg.data.mesas)
+            }
+            if (msg.type === 'pedido_nuevo' || msg.type === 'mesa_actualizada') {
+              getMesas().then(setMesas)
+            }
+          } catch {}
+        }
+        ws.onclose = () => { reconnectTimer = setTimeout(connect, 3000) }
+      } catch {}
+    }
+    connect()
+    return () => { if (ws) ws.close(); clearTimeout(reconnectTimer) }
+  }, [])
+
+  const fetchServerInfo = async () => {
+    try {
+      const res = await fetch(`http://${window.location.hostname}:3456/api/ip`)
+      const data = await res.json()
+      setServerInfo(data)
+      setShowServerInfo(true)
+    } catch {
+      showNotification('error', 'Servidor local no disponible')
+    }
+  }
 
   const loadNetProfit = async () => {
     setLoadingNetProfit(true)
@@ -1115,13 +1081,7 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     }
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleAgregar()
-    }
-  }
-
- const getAvailableModes = (): Mode[] => {
+  const getAvailableModes = (): Mode[] => {
     const tpl = businessTemplates[currentBusinessType] || businessTemplates.pos
     const bases: Mode[] = ['venta']
     if (tpl.showCompra && isFeatureAllowed('compra')) bases.push('compra')
@@ -1204,189 +1164,65 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             </div>
           )}
 
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold text-gray-800">LionCore POS</h1>
-              {licenseState.isActivated && (
-                <span
-                  className={`text-xs px-2 py-1 rounded-full font-semibold cursor-pointer ${licenseState.plan === 'pro' ? 'bg-purple-100 text-purple-700' : licenseState.plan === 'enterprise' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}
-                  onClick={() => setShowDeviceModal(true)}
-                  title="Click para ver info del dispositivo"
-                >
-                  {licenseState.plan.toUpperCase()} {licenseStatusCheck.daysLeft >= 0 && `(${licenseStatusCheck.daysLeft}d)`}
-                </span>
-              )}
-              {!licenseState.isActivated && (
-                <span className="text-xs px-2 py-1 rounded-full font-semibold bg-red-100 text-red-600">
-                  FREE
-                </span>
-              )}
-              <span className="text-xs px-2 py-1 rounded-full font-semibold bg-gray-100 text-gray-600" title="Tipo de negocio activo">
-                {currentTpl.emoji} {currentTpl.label}
-              </span>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowDeviceModal(true)}
-                className="px-3 py-2 rounded-lg font-semibold text-xs bg-gray-200 text-gray-700 hover:bg-gray-300 max-w-48 truncate"
-                title="Click para ver Device ID completo"
-              >
-                💻 ...{getDeviceId().slice(-8)}
-              </button>
-              {!licenseState.isActivated && (
-                <button
-                  onClick={() => setShowLicenseModal(true)}
-                  className="px-4 py-2 rounded-lg font-semibold transition-colors bg-amber-500 text-white hover:bg-amber-600"
-                >
-                  🔑 Activar
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  if (!isFeatureAllowed('config')) {
-                    const msg = getUpgradeMessage('config')
-                    setShowUpgradeModal(msg)
-                    return
-                  }
-                  setShowConfig(!showConfig); setShowSummary(false); setShowHistory(false); setShowInventory(false);
-                }}
-                className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${
-                  showConfig ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
-                }`}
-              >
-                ⚙️
-              </button>
-              <button
-                onClick={async () => {
-                  if (!showInventory) {
-                    const stockData = await getStockByProduct()
-                    setInventory(stockData)
-                  }
-                  setShowInventory(!showInventory)
-                  setShowSummary(false); setShowHistory(false); setShowConfig(false);
-                }}
-                className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${
-                  showInventory ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
-                }`}
-                >
-                  📦
-                </button>
-                {currentBusinessType === 'deshidratados' && (
-                  <button
-                    onClick={async () => {
-                      setShowProduction(!showProduction)
-                      setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false)
-                      if (!showProduction) {
-                        await loadProductionData()
-                      }
-                    }}
-                    className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${
-                      showProduction ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
-                    }`}
-                  >
-                    🏭
-                  </button>
-                )}
-                {currentBusinessType === 'fruver' && (
-                  <button
-                    onClick={async () => {
-                      setShowFruverDashboard(!showFruverDashboard)
-                      setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowProduction(false)
-                      if (!showFruverDashboard) {
-                        await loadFruverDashboard()
-                      }
-                    }}
-                    className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${
-                      showFruverDashboard ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
-                    }`}
-                  >
-                    📊
-                  </button>
-                )}
-                <button
-                  onClick={async () => {
-                    setShowServices(!showServices)
-                    setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowProduction(false); setShowFruverDashboard(false)
-                    if (!showServices) {
-                      await loadServiceOrders()
-                    }
-                  }}
-                  className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${
-                    showServices ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
-                  }`}
-                >
-                  🔧
-                </button>
-                <div className="relative">
-                <button
-                  onClick={() => setShowMoreMenu(!showMoreMenu)}
-                  className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${
-                    showSummary || showHistory ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'
-                  }`}
-                >
-                  ⋮
-                </button>
-                {showMoreMenu && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-2 z-50">
-                    <button
-                      onClick={() => { handleToggleSummary(); setShowHistory(false); setShowInventory(false); setShowConfig(false); setShowMoreMenu(false); }}
-                      className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
-                    >
-                      <span>📊</span> Resumen
-                    </button>
-                    <button
-                      onClick={() => { handleToggleHistory(); setShowSummary(false); setShowInventory(false); setShowConfig(false); setShowMoreMenu(false); }}
-                      className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
-                    >
-                      <span>📋</span> Historial
-                    </button>
-                    {(showHistory || showSummary) && (
-                      <>
-                        <div className="border-t border-gray-100 my-1"></div>
-                        <button
-                          onClick={async () => {
-                            const headers = ['ID', 'Fecha', 'Tipo', 'Producto', 'Cantidad', 'Precio', 'Total']
-                            const rows = []
-                            for (const tx of transactions) {
-                              const items = await db.transaction_items.where('transactionId').equals(tx.id!).toArray()
-                              for (const item of items) {
-                                rows.push([tx.id, new Date(tx.date).toLocaleDateString(), tx.type, item.name, item.quantity, item.price, item.subtotal])
-                              }
-                            }
-                            const csv = [headers, ...rows].map(r => r.join(',')).join('\n')
-                            const blob = new Blob([csv], { type: 'text/csv' })
-                            const url = URL.createObjectURL(blob)
-                            const a = document.createElement('a')
-                            a.href = url
-                            a.download = `transacciones_${new Date().toISOString().split('T')[0]}.csv`
-                            a.click()
-                            URL.revokeObjectURL(url)
-                            setShowMoreMenu(false)
-                          }}
-                          className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
-                        >
-                          <span>📥</span> Exportar CSV
-                        </button>
-                      </>
-                    )}
-                    <div className="border-t border-gray-100 my-1"></div>
-                    <button
-                      onClick={() => { setShowReferrals(true); setShowMoreMenu(false); }}
-                      className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
-                    >
-                      <span>🎁</span> Invitar y ganar
-                    </button>
-                    <button
-                      onClick={() => { setShowConfig(true); setShowSummary(false); setShowHistory(false); setShowInventory(false); setShowMoreMenu(false); }}
-                      className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
-                    >
-                      <span>⚙️</span> Configuracion
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <AppHeader
+            licenseState={licenseState}
+            licenseStatusCheck={licenseStatusCheck}
+            currentTpl={currentTpl}
+            currentBusinessType={currentBusinessType}
+            showConfig={showConfig}
+            showSummary={showSummary}
+            showHistory={showHistory}
+            showInventory={showInventory}
+            showProduction={showProduction}
+            showFruverDashboard={showFruverDashboard}
+            showServices={showServices}
+            showMoreMenu={showMoreMenu}
+            onShowDeviceModal={() => setShowDeviceModal(true)}
+            onShowLicenseModal={() => setShowLicenseModal(true)}
+            onShowUpgradeModal={(msg: {title: string; message: string}) => setShowUpgradeModal(msg)}
+            onToggleConfig={() => { setShowConfig(!showConfig); setShowSummary(false); setShowHistory(false); setShowInventory(false); }}
+            onToggleInventory={() => { setShowInventory(!showInventory); setShowSummary(false); setShowHistory(false); setShowConfig(false); }}
+            onToggleProduction={() => { setShowProduction(!showProduction); setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false) }}
+            onToggleFruverDashboard={() => { setShowFruverDashboard(!showFruverDashboard); setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowProduction(false) }}
+            onToggleServices={() => { setShowServices(!showServices); setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowProduction(false); setShowFruverDashboard(false) }}
+            onToggleSummary={() => { handleToggleSummary(); setShowHistory(false); setShowInventory(false); setShowConfig(false); }}
+            onToggleHistory={() => { handleToggleHistory(); setShowSummary(false); setShowInventory(false); setShowConfig(false); }}
+            onToggleMoreMenu={() => setShowMoreMenu(!showMoreMenu)}
+            onSetShowMoreMenu={(v: boolean) => setShowMoreMenu(v)}
+            onSetShowReferrals={(v: boolean) => setShowReferrals(v)}
+            onExportCSV={async () => {
+              const headers = ['ID', 'Fecha', 'Tipo', 'Producto', 'Cantidad', 'Precio', 'Total']
+              const rows = []
+              for (const tx of transactions) {
+                const items = await db.transaction_items.where('transactionId').equals(tx.id!).toArray()
+                for (const item of items) {
+                  rows.push([tx.id, new Date(tx.date).toLocaleDateString(), tx.type, item.name, item.quantity, item.price, item.subtotal])
+                }
+              }
+              const csv = [headers, ...rows].map(r => r.join(',')).join('\n')
+              const blob = new Blob([csv], { type: 'text/csv' })
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url
+              a.download = `transacciones_${new Date().toISOString().split('T')[0]}.csv`
+              a.click()
+              URL.revokeObjectURL(url)
+              setShowMoreMenu(false)
+            }}
+            onLoadProductionData={async () => {
+              await loadProductionData()
+            }}
+            onLoadFruverDashboard={async () => {
+              await loadFruverDashboard()
+            }}
+            onLoadServiceOrders={async () => {
+              await loadServiceOrders()
+            }}
+            onSetInventory={(data: any[]) => setInventory(data)}
+            isFeatureAllowed={isFeatureAllowed}
+            getUpgradeMessage={getUpgradeMessage}
+            getStockByProduct={getStockByProduct}
+          />
 
           {!showConfig && !showSummary && !showHistory && !showInventory && (
             <>
@@ -1435,1819 +1271,272 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
               </div>
 
               {currentBusinessType === 'restaurante' && (
-                <div className="bg-white rounded-2xl shadow-lg p-6">
-                  <div className="flex justify-between items-center mb-4">
-                    <div>
-                      <h2 className="text-xl font-bold text-gray-800">🍽️ Mesas</h2>
-                      <p className="text-sm text-gray-500">
-                        {mesas.filter(m => m.status === 'ocupada').length} ocupadas / {mesas.length} total
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded">Tipo: {currentBusinessType}</span>
-                      <button
-                        onClick={() => { resetAllMesas().then(() => getMesas().then(setMesas)); setSelectedMesa(null); }}
-                        className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-semibold hover:bg-gray-200"
-                      >
-                        🔄 Reset Mesas
-                      </button>
-                    </div>
-                  </div>
-
-                  {!selectedMesa ? (
-                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                      {mesas.map(mesa => {
-                        const statusColor = mesa.status === 'disponible' ? 'bg-green-100 border-green-300 text-green-700' :
-                          mesa.status === 'abierta' ? 'bg-blue-100 border-blue-300 text-blue-700' :
-                          mesa.status === 'ocupada' ? 'bg-orange-100 border-orange-300 text-orange-700' :
-                          'bg-purple-100 border-purple-300 text-purple-700'
-                        return (
-                          <button
-                            key={mesa.id}
-                            onClick={() => {
-                              if (mesa.status === 'disponible') {
-                                openMesa(mesa.id!).then(() => getMesas().then(m => {
-                                  setMesas(m)
-                                  setSelectedMesa(m.find(x => x.id === mesa.id)!)
-                                }))
-                              } else {
-                                getMesas().then(m => setSelectedMesa(m.find(x => x.id === mesa.id)!))
-                              }
-                            }}
-                            className={`p-4 rounded-xl border-2 text-center transition-all hover:shadow-md ${statusColor}`}
-                          >
-                            <p className="font-bold text-sm">{mesa.name}</p>
-                            <p className="text-xs mt-1 capitalize">{mesa.status}</p>
-                            {mesa.total > 0 && (
-                              <p className="text-xs font-bold mt-1">{formatCOP(mesa.total)}</p>
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-lg font-bold text-gray-800">{selectedMesa.name}</h3>
-                        <button
-                          onClick={() => setSelectedMesa(null)}
-                          className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-semibold hover:bg-gray-200"
-                        >
-                          ← Volver a mesas
-                        </button>
-                      </div>
-
-                      {selectedMesa.orderItems.length > 0 ? (
-                        <div className="space-y-2 mb-4">
-                          {selectedMesa.orderItems.map((item, idx) => (
-                            <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                              <div className="flex-1">
-                                <p className="font-semibold text-sm">{item.name}</p>
-                                <p className="text-xs text-gray-500">{item.quantity} × {formatCOP(item.price)}</p>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <p className="font-bold text-sm">{formatCOP(item.subtotal)}</p>
-                                <button
-                                  onClick={() => {
-                                    removeItemFromMesa(selectedMesa.id!, idx).then(() => getMesas().then(m => {
-                                      setMesas(m)
-                                      setSelectedMesa(m.find(x => x.id === selectedMesa.id)!)
-                                    }))
-                                  }}
-                                  className="w-6 h-6 flex items-center justify-center rounded-full bg-red-100 text-red-500 hover:bg-red-200 text-xs"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-center text-gray-400 text-sm py-4">Sin productos</p>
-                      )}
-
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => setShowMesaProductSelect(true)}
-                          className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
-                        >
-                          + Agregar producto
-                        </button>
-                        {selectedMesa.orderItems.length > 0 && (
-                          <button
-                            onClick={() => {
-                              closeMesa(selectedMesa.id!).then(() => {
-                                getMesas().then(m => {
-                                  setMesas(m)
-                                  setSelectedMesa(null)
-                                  loadTodayWow()
-                                  showNotification('success', `Mesa cobrada: ${formatCOP(selectedMesa.total)}`)
-                                })
-                              })
-                            }}
-                            className="py-3 px-6 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700"
-                          >
-                            💰 Cobrar {formatCOP(selectedMesa.total)}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {showMesaProductSelect && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
-                    <button
-                      onClick={() => { setShowMesaProductSelect(false); setMesaSelectedProduct(''); setMesaProductQty(1); }}
-                      className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors font-bold text-lg"
-                    >
-                      ✕
-                    </button>
-                    <h2 className="text-xl font-bold text-gray-800 mb-4">Agregar a {selectedMesa?.name}</h2>
-
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Producto</label>
-                        <input
-                          type="text"
-                          value={mesaSelectedProduct}
-                          onChange={(e) => setMesaSelectedProduct(e.target.value)}
-                          placeholder="Nombre del producto"
-                          className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Cantidad</label>
-                          <input
-                            type="number"
-                            value={mesaProductQty}
-                            onChange={(e) => setMesaProductQty(Number(e.target.value))}
-                            min="1"
-                            className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Precio</label>
-                          <input
-                            type="number"
-                            value={mesaSelectedPrice}
-                            onChange={(e) => setMesaSelectedPrice(Number(e.target.value))}
-                            placeholder="0"
-                            className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          if (mesaSelectedProduct && mesaSelectedPrice > 0 && selectedMesa) {
-                            addToMesa(selectedMesa.id!, {
-                              name: mesaSelectedProduct,
-                              quantity: mesaProductQty,
-                              price: mesaSelectedPrice,
-                              subtotal: mesaProductQty * mesaSelectedPrice,
-                            }).then(() => getMesas().then(m => {
-                              setMesas(m)
-                              setSelectedMesa(m.find(x => x.id === selectedMesa.id)!)
-                              setShowMesaProductSelect(false)
-                              setMesaSelectedProduct('')
-                              setMesaProductQty(1)
-                              setMesaSelectedPrice(0)
-                            }))
-                          }
-                        }}
-                        disabled={!mesaSelectedProduct || mesaSelectedPrice <= 0}
-                        className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                      >
-                        Agregar
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <RestaurantModule
+                  mesas={mesas} setMesas={setMesas}
+                  selectedMesa={selectedMesa} setSelectedMesa={setSelectedMesa}
+                  showCocina={showCocina} setShowCocina={setShowCocina}
+                  serverInfo={serverInfo} showServerInfo={showServerInfo} setShowServerInfo={setShowServerInfo}
+                  fetchServerInfo={fetchServerInfo}
+                  products={products}
+                  showMesaProductSelect={showMesaProductSelect} setShowMesaProductSelect={setShowMesaProductSelect}
+                  mesaSelectedProduct={mesaSelectedProduct} setMesaSelectedProduct={setMesaSelectedProduct}
+                  mesaProductQty={mesaProductQty} setMesaProductQty={setMesaProductQty}
+                  mesaSelectedPrice={mesaSelectedPrice} setMesaSelectedPrice={setMesaSelectedPrice}
+                  showPaymentModal={showPaymentModal} setShowPaymentModal={setShowPaymentModal}
+                  paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod}
+                  showMoveMesaModal={showMoveMesaModal} setShowMoveMesaModal={setShowMoveMesaModal}
+                  moveTargetMesaId={moveTargetMesaId} setMoveTargetMesaId={setMoveTargetMesaId}
+                  showNotification={showNotification}
+                  loadTodayWow={loadTodayWow}
+                  currentBusinessType={currentBusinessType}
+                />
               )}
             </>
           )}
 
-          {showConfig && (
-            <div className="bg-white rounded-xl shadow-md p-4">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">⚙️ Configuración</h2>
+          <ConfigView
+            show={showConfig}
+            businesses={businesses}
+            currentBusinessId={currentBusinessId}
+            currentTpl={currentTpl}
+            onSwitchBusiness={(id: number) => { setCurrentBusinessId(id); window.location.reload() }}
+            onDeleteBusiness={async (id: number) => { await deleteBusiness(id); window.location.reload() }}
+            onUpdateBusinessType={async (id: number, tipo: BusinessType) => { await updateBusinessType(id, tipo); window.location.reload() }}
+            onNewBusiness={() => { setShowNewBusinessModal(true); setNewBusinessName(''); setNewBusinessType('pos') }}
+            invConfig={invConfig}
+            onToggleSellWithoutStock={() => { setInvConfig({ ...invConfig, sellWithoutStock: !invConfig.sellWithoutStock }); saveInventoryConfig({ ...invConfig, sellWithoutStock: !invConfig.sellWithoutStock }) }}
+            onToggleLowStockAlert={() => { setInvConfig({ ...invConfig, lowStockAlert: !invConfig.lowStockAlert }); saveInventoryConfig({ ...invConfig, lowStockAlert: !invConfig.lowStockAlert }) }}
+            onLowStockThresholdChange={(v: number) => { setInvConfig({ ...invConfig, lowStockThreshold: v }); saveInventoryConfig({ ...invConfig, lowStockThreshold: v }) }}
+            onAllowNegativeChange={(v: boolean) => { setInvConfig({ ...invConfig, allowNegative: v }); saveInventoryConfig({ ...invConfig, allowNegative: v }) }}
+            onOpenInvAdjust={() => setShowInvAdjustModal(true)}
+            showInventorySection={getInventoryMode(currentBusinessType).showInventory}
+            businessConfig={businessConfig}
+            onConfigFieldChange={(field: string, value: string) => { setBusinessConfig((prev: any) => ({ ...prev, [field]: value })); setConfigSaved(false) }}
+            configSaved={configSaved}
+            onSaveConfig={async () => {
+              try {
+                await saveBusinessConfig({
+                  costoManoObra: Number(businessConfig.costoManoObra) || 0,
+                  costoEnergia: Number(businessConfig.costoEnergia) || 0,
+                  costoEmpaque: Number(businessConfig.costoEmpaque) || 0,
+                  costoTransporte: Number(businessConfig.costoTransporte) || 0,
+                  porcentajeGanancia: Number(businessConfig.porcentajeGanancia) || 30,
+                })
+                setConfigSaved(true)
+                showNotification('success', 'Configuración guardada')
+              } catch (error) {
+                showNotification('error', 'Error al guardar')
+              }
+            }}
+          />
 
-              <div className="mb-6 p-4 bg-gray-50 rounded-xl">
-                <h3 className="font-semibold text-gray-700 mb-3">🏢 Negocios</h3>
-                <div className="space-y-2 mb-3">
-                  {businesses.map(b => {
-                    const tpl = businessTemplates[b.tipo || 'pos']
-                    const isActive = b.id === currentBusinessId
-                    return (
-                      <div
-                        key={b.id}
-                        className={`p-3 rounded-lg border-2 transition-all ${
-                          isActive ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <div
-                            className="flex items-center gap-2 cursor-pointer flex-1"
-                            onClick={() => {
-                              setCurrentBusinessId(b.id!)
-                              window.location.reload()
-                            }}
-                          >
-                            <span className="text-xl">{tpl.emoji}</span>
-                            <div>
-                              <p className="font-semibold text-sm">{b.name}</p>
-                              <p className="text-xs text-gray-500">{tpl.label} • {tpl.unidad}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {isActive && <span className="text-xs bg-blue-500 text-white px-2 py-1 rounded-full">Activo</span>}
-                            {businesses.length > 1 && (
-                              <button
-                                onClick={() => {
-                                  if (confirm(`¿Eliminar "${b.name}"?`)) {
-                                    deleteBusiness(b.id!).then(() => window.location.reload())
-                                  }
-                                }}
-                                className="w-6 h-6 flex items-center justify-center rounded-full bg-red-100 text-red-500 hover:bg-red-200 text-xs"
-                              >
-                                ✕
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        {isActive && (
-                          <div className="mt-2 pt-2 border-t border-gray-200">
-                            <p className="text-xs text-gray-500 mb-1">Cambiar tipo de negocio:</p>
-                            <div className="flex gap-1.5 flex-wrap">
-                              {(Object.keys(businessTemplates) as BusinessType[]).map(tipo => {
-                                const t = businessTemplates[tipo]
-                                const isSelected = b.tipo === tipo
-                                return (
-                                  <button
-                                    key={tipo}
-                                    onClick={() => {
-                                      updateBusinessType(b.id!, tipo).then(() => window.location.reload())
-                                    }}
-                                    className={`px-2 py-1 rounded-md text-xs font-semibold transition-all ${
-                                      isSelected
-                                        ? 'bg-blue-600 text-white'
-                                        : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300'
-                                    }`}
-                                  >
-                                    {t.emoji} {t.label}
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-                <button
-                  onClick={() => {
-                    setShowNewBusinessModal(true)
-                    setNewBusinessName('')
-                    setNewBusinessType('pos')
-                  }}
-                  className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 text-sm"
-                >
-                  + Nuevo Negocio
-                </button>
-              </div>
+          <SummaryView
+            show={showSummary}
+            summaryPeriod={summaryPeriod}
+            onPeriodChange={handlePeriodChange}
+            loadingSummary={loadingSummary}
+            summary={summary}
+            netProfit={netProfit}
+            loadingNetProfit={loadingNetProfit}
+          />
 
-              {getInventoryMode(currentBusinessType).showInventory && (
-                <div className="mb-6 p-4 bg-gray-50 rounded-xl">
-                  <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-semibold text-gray-700">📦 Inventario</h3>
-                    <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">{currentTpl.label}</span>
-                  </div>
-                  <div className="space-y-3">
-                    <label className="flex items-center justify-between p-3 bg-white rounded-lg border cursor-pointer">
-                      <div>
-                        <p className="font-semibold text-sm">Permitir vender sin stock</p>
-                        <p className="text-xs text-gray-500">No bloquear ventas si el inventario está en 0</p>
-                      </div>
-                      <div className={`w-12 h-6 rounded-full transition-all ${invConfig.sellWithoutStock ? 'bg-green-500' : 'bg-gray-300'}`}
-                        onClick={() => { setInvConfig({ ...invConfig, sellWithoutStock: !invConfig.sellWithoutStock }); saveInventoryConfig({ ...invConfig, sellWithoutStock: !invConfig.sellWithoutStock }); }}
-                      >
-                        <div className={`w-5 h-5 bg-white rounded-full shadow-md transition-all mt-0.5 ${invConfig.sellWithoutStock ? 'ml-6' : 'ml-0.5'}`} />
-                      </div>
-                    </label>
-                    <label className="flex items-center justify-between p-3 bg-white rounded-lg border cursor-pointer">
-                      <div>
-                        <p className="font-semibold text-sm">Alerta de stock bajo</p>
-                        <p className="text-xs text-gray-500">Avisar cuando un producto tenga poco stock</p>
-                      </div>
-                      <div className={`w-12 h-6 rounded-full transition-all ${invConfig.lowStockAlert ? 'bg-green-500' : 'bg-gray-300'}`}
-                        onClick={() => { setInvConfig({ ...invConfig, lowStockAlert: !invConfig.lowStockAlert }); saveInventoryConfig({ ...invConfig, lowStockAlert: !invConfig.lowStockAlert }); }}
-                      >
-                        <div className={`w-5 h-5 bg-white rounded-full shadow-md transition-all mt-0.5 ${invConfig.lowStockAlert ? 'ml-6' : 'ml-0.5'}`} />
-                      </div>
-                    </label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Mínimo para alerta</label>
-                        <input
-                          type="number"
-                          value={invConfig.lowStockThreshold}
-                          onChange={(e) => { setInvConfig({ ...invConfig, lowStockThreshold: Number(e.target.value) }); saveInventoryConfig({ ...invConfig, lowStockThreshold: Number(e.target.value) }); }}
-                          min="1"
-                          className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Permitir negativo</label>
-                        <select
-                          value={invConfig.allowNegative ? 'true' : 'false'}
-                          onChange={(e) => { setInvConfig({ ...invConfig, allowNegative: e.target.value === 'true' }); saveInventoryConfig({ ...invConfig, allowNegative: e.target.value === 'true' }); }}
-                          className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="true">Sí</option>
-                          <option value="false">No</option>
-                        </select>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setShowInvAdjustModal(true)}
-                      className="w-full py-2 px-4 bg-amber-500 text-white rounded-lg font-semibold hover:bg-amber-600 text-sm"
-                    >
-                      ✏️ Ajustar inventario manual
-                    </button>
-                  </div>
-                </div>
-              )}
-              
-              <h3 className="font-bold text-gray-800 mb-3">Configuración de Costos</h3>
-              <p className="text-sm text-gray-500 mb-4">Configura los costos fijos para calcular el precio de venta en producción.</p>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Costo mano obra (por unidad)</label>
-                  <input
-                    type="number"
-                    placeholder="0"
-                    value={businessConfig.costoManoObra}
-                    onChange={(e) => { setBusinessConfig({ ...businessConfig, costoManoObra: e.target.value }); setConfigSaved(false); }}
-                    className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Costo energía</label>
-                  <input
-                    type="number"
-                    placeholder="0"
-                    value={businessConfig.costoEnergia}
-                    onChange={(e) => { setBusinessConfig({ ...businessConfig, costoEnergia: e.target.value }); setConfigSaved(false); }}
-                    className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Costo empaque</label>
-                  <input
-                    type="number"
-                    placeholder="0"
-                    value={businessConfig.costoEmpaque}
-                    onChange={(e) => { setBusinessConfig({ ...businessConfig, costoEmpaque: e.target.value }); setConfigSaved(false); }}
-                    className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Costo transporte</label>
-                  <input
-                    type="number"
-                    placeholder="0"
-                    value={businessConfig.costoTransporte}
-                    onChange={(e) => { setBusinessConfig({ ...businessConfig, costoTransporte: e.target.value }); setConfigSaved(false); }}
-                    className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs text-gray-500 mb-1">% Ganancia</label>
-                  <input
-                    type="number"
-                    placeholder="30"
-                    value={businessConfig.porcentajeGanancia}
-                    onChange={(e) => { setBusinessConfig({ ...businessConfig, porcentajeGanancia: e.target.value }); setConfigSaved(false); }}
-                    className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
+          <InventoryView
+            show={showInventory}
+            inventory={inventory}
+            inventorySearch={inventorySearch}
+            onSearchChange={setInventorySearch}
+            invConfig={invConfig}
+            inlineEditField={inlineEditField}
+            onInlineEditStart={setInlineEditField}
+            onInlineEditChange={setInlineEditField}
+            onInlineSave={handleInlineSave}
+            unidad={currentTpl.unidad}
+            onSelectProduct={(name) => { setProducto(name); setShowInventory(false) }}
+            onSetLastPrice={(price) => setPrecio(price)}
+            onPurchase={openPurchaseModal}
+            onAdjust={openQuickAdjust}
+            onEdit={openEditProduct}
+            canPurchase={isFeatureAllowed('compra')}
+            canAdjust={isFeatureAllowed('config')}
+          />
 
-              <button
-                onClick={async () => {
-                  try {
-                    await saveBusinessConfig({
-                      costoManoObra: Number(businessConfig.costoManoObra) || 0,
-                      costoEnergia: Number(businessConfig.costoEnergia) || 0,
-                      costoEmpaque: Number(businessConfig.costoEmpaque) || 0,
-                      costoTransporte: Number(businessConfig.costoTransporte) || 0,
-                      porcentajeGanancia: Number(businessConfig.porcentajeGanancia) || 30,
-                    })
-                    setConfigSaved(true)
-                    showNotification('success', 'Configuración guardada')
-                  } catch (error) {
-                    showNotification('error', 'Error al guardar')
-                  }
-                }}
-                className="mt-4 w-full py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-              >
-                {configSaved ? '✓ Guardado' : 'Guardar Configuración'}
-              </button>
-            </div>
-          )}
+          <ProductionView
+            show={showProduction}
+            productionDashboard={productionDashboard as any}
+            rawMaterial={productionRawMaterial}
+            onRawMaterialChange={setProductionRawMaterial}
+            rawMaterials={rawMaterials as any}
+            finalProduct={productionFinalProduct}
+            onFinalProductChange={setProductionFinalProduct}
+            finalProducts={finalProducts as any}
+            rawQty={productionRawQty}
+            onRawQtyChange={setProductionRawQty}
+            finalQty={productionFinalQty}
+            onFinalQtyChange={setProductionFinalQty}
+            notes={productionNotes}
+            onNotesChange={setProductionNotes}
+            calcRendimiento={Number(calculatedRendimiento())}
+            onRegister={handleProduction}
+            productions={productions as any}
+          />
 
-          {showSummary && (
-            <div className="bg-white rounded-xl shadow-md p-4">
-              <div className="flex gap-2 mb-4">
-                {(['diario', 'semanal', 'mensual'] as const).map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => handlePeriodChange(p)}
-                    className={`flex-1 py-2 px-4 rounded-lg font-semibold uppercase text-sm transition-all ${
-                      summaryPeriod === p
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-
-              {loadingSummary ? (
-                <div className="p-8 text-center text-gray-500">Cargando...</div>
-              ) : summary ? (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="bg-green-50 rounded-lg p-4 text-center">
-                      <p className="text-sm text-green-600 font-semibold">Entradas</p>
-                      <p className="text-xl font-bold text-green-700">{formatCOP(summary.entradas)}</p>
-                    </div>
-                    <div className="bg-red-50 rounded-lg p-4 text-center">
-                      <p className="text-sm text-red-600 font-semibold">Salidas</p>
-                      <p className="text-xl font-bold text-red-700">{formatCOP(summary.salidas)}</p>
-                    </div>
-                    <div className={`rounded-lg p-4 text-center ${summary.balance >= 0 ? 'bg-blue-50' : 'bg-orange-50'}`}>
-                      <p className={`text-sm font-semibold ${summary.balance >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>Balance</p>
-                      <p className={`text-xl font-bold ${summary.balance >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>
-                        {formatCOP(summary.balance)}
-                      </p>
-                    </div>
-                  </div>
-                  <p className="text-center text-sm text-gray-500">{summary.transacciones} transacciones</p>
-
-                  {netProfit && (
-                    <div className="border-t border-gray-200 pt-4 mt-4">
-                      <h3 className="font-bold text-gray-800 mb-3">📈 Ganancia Real</h3>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <div className="bg-emerald-50 rounded-lg p-3 text-center">
-                          <p className="text-xs text-emerald-600 font-semibold">Ventas</p>
-                          <p className="text-lg font-bold text-emerald-700">{formatCOP(netProfit.ventasTotales)}</p>
-                        </div>
-                        <div className="bg-orange-50 rounded-lg p-3 text-center">
-                          <p className="text-xs text-orange-600 font-semibold">Costo productos</p>
-                          <p className="text-lg font-bold text-orange-700">{formatCOP(netProfit.costoProductosVendidos)}</p>
-                        </div>
-                        <div className="bg-purple-50 rounded-lg p-3 text-center">
-                          <p className="text-xs text-purple-600 font-semibold">Gastos + Compras</p>
-                          <p className="text-lg font-bold text-purple-700">{formatCOP(netProfit.gastosOperativos + netProfit.comprasMateriaPrima)}</p>
-                        </div>
-                        <div className={`rounded-lg p-3 text-center ${netProfit.gananciaNeta >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-                          <p className={`text-xs font-semibold ${netProfit.gananciaNeta >= 0 ? 'text-green-600' : 'text-red-600'}`}>Ganancia Neta</p>
-                          <p className={`text-lg font-bold ${netProfit.gananciaNeta >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                            {formatCOP(netProfit.gananciaNeta)}
-                          </p>
-                          <p className={`text-xs font-bold mt-1 ${netProfit.margenPorcentaje >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                            {netProfit.margenPorcentaje.toFixed(1)}% margen
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {loadingNetProfit && (
-                    <div className="text-center text-sm text-gray-400">Calculando ganancia...</div>
-                  )}
-                </div>
-              ) : (
-                <div className="p-8 text-center text-gray-400">Sin datos</div>
-              )}
-            </div>
-          )}
-
-          {showInventory && (
-            <div className="bg-white rounded-xl shadow-md overflow-hidden">
-              <div className="p-4 border-b border-gray-200">
-                <div className="flex justify-between items-center mb-3">
-                  <div>
-                    <h2 className="text-xl font-bold text-gray-800">Inventario</h2>
-                    <p className="text-sm text-gray-500">{inventory.length} productos</p>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Buscar..."
-                      value={inventorySearch}
-                      onChange={(e) => setInventorySearch(e.target.value)}
-                      className="w-48 py-2 px-4 pl-10 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
-                  </div>
-                </div>
-              </div>
-
-              {inventory.filter(i => i.name.toLowerCase().includes(inventorySearch.toLowerCase())).length === 0 ? (
-                <div className="p-12 text-center">
-                  <p className="text-gray-400 text-lg mb-2">
-                    {inventorySearch ? 'No se encontraron productos' : 'No hay productos en inventario'}
-                  </p>
-                  <p className="text-gray-400 text-sm">Registra producciones para ver el inventario</p>
-                </div>
-              ) : (
-                <div className="p-4 overflow-y-auto" style={{ maxHeight: '60vh' }}>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                    {inventory
-                      .filter(i => i.name.toLowerCase().includes(inventorySearch.toLowerCase()))
-                      .map((item, index) => (
-                        <div
-                          key={index}
-                          className="bg-gradient-to-br from-white to-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-lg hover:border-blue-300 transition-all duration-200"
-                        >
-                          <div className="flex justify-between items-start mb-2">
-                            <h3
-                              className="font-bold text-gray-800 text-sm truncate flex-1 cursor-pointer"
-                              title={item.name}
-                              onClick={() => {
-                                setProducto(item.name)
-                                if (item.lastPrice) setPrecio(String(item.lastPrice))
-                                setShowInventory(false)
-                              }}
-                            >
-                              {item.name}
-                            </h3>
-                            <div className="flex gap-1 ml-2">
-                              {invConfig.lowStockAlert && item.quantity <= invConfig.lowStockThreshold && item.quantity > 0 && (
-                                <span className="text-xs px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700" title="Stock bajo">⚠️</span>
-                              )}
-                              <span className={`text-xs px-2 py-0.5 rounded-full ${item.quantity > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                                {item.quantity > 0 ? '✓' : '✗'}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          <div className="space-y-1 mb-3">
-                            <div className="flex justify-between">
-                              <span className="text-xs text-gray-500">Stock</span>
-                              {inlineEditField?.productId === index && inlineEditField?.field === 'stock' ? (
-                                <input
-                                  type="number"
-                                  value={inlineEditField.value}
-                                  onChange={e => setInlineEditField({ ...inlineEditField, value: e.target.value })}
-                                  onBlur={() => handleInlineSave(index)}
-                                  onKeyDown={e => e.key === 'Enter' && handleInlineSave(index)}
-                                  className="w-20 px-2 py-0.5 text-right text-lg font-bold border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                  autoFocus
-                                />
-                              ) : (
-                                <span
-                                  className={`text-lg font-bold cursor-pointer hover:bg-blue-50 rounded px-1 ${item.quantity > 0 ? 'text-green-600' : 'text-red-500'}`}
-                                  onClick={() => setInlineEditField({ productId: index, field: 'stock', value: String(item.quantity) })}
-                                  title="Click para editar"
-                                >
-                                  {item.quantity}
-                                </span>
-                              )}
-                            </div>
-                            {currentTpl.unidad === 'kg' && item.quantity > 0 && (
-                              <div className="text-xs text-gray-400 text-right">{currentTpl.unidad}</div>
-                            )}
-                          </div>
-                          
-                          <div className="border-t border-gray-100 pt-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-xs text-gray-500">Precio</span>
-                              {inlineEditField?.productId === index && inlineEditField?.field === 'price' ? (
-                                <input
-                                  type="number"
-                                  value={inlineEditField.value}
-                                  onChange={e => setInlineEditField({ ...inlineEditField, value: e.target.value })}
-                                  onBlur={() => handleInlineSave(index)}
-                                  onKeyDown={e => e.key === 'Enter' && handleInlineSave(index)}
-                                  className="w-24 px-2 py-0.5 text-right text-sm font-semibold border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                  autoFocus
-                                />
-                              ) : (
-                                <span
-                                  className="text-sm font-semibold text-blue-600 cursor-pointer hover:bg-blue-50 rounded px-1"
-                                  onClick={() => setInlineEditField({ productId: index, field: 'price', value: String(item.lastPrice || 0) })}
-                                  title="Click para editar"
-                                >
-                                  {item.lastPrice ? formatCOP(item.lastPrice) : '—'}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div className="mt-2 pt-2 border-t border-gray-100">
-                            <div className="flex justify-between text-xs text-gray-400">
-                              <span>📦 {item.totalProduced || 0}</span>
-                              <span>💰 {item.totalSold || 0}</span>
-                            </div>
-                          </div>
-
-                          {item.quantity < 0 && (
-                            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-center">
-                              <p className="text-xs text-red-600 font-semibold">⚠️ Stock negativo</p>
-                              <p className="text-xs text-red-500 mt-1">Ajusta o registra compra</p>
-                            </div>
-                          )}
-
-                          <div className="flex gap-1.5 mt-2">
-                            <button
-                              onClick={() => openPurchaseModal(item.name)}
-                              disabled={!isFeatureAllowed('compra')}
-                              className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                                !isFeatureAllowed('compra') ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-green-100 text-green-700 hover:bg-green-200'
-                              }`}
-                            >
-                              + Compra
-                            </button>
-                            <button
-                              onClick={() => openQuickAdjust(item.name)}
-                              disabled={!isFeatureAllowed('config')}
-                              className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                                !isFeatureAllowed('config') ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
-                              }`}
-                            >
-                              Ajustar
-                            </button>
-                            <button
-                              onClick={() => openEditProduct(item.name)}
-                              className="flex-1 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-200 transition-colors"
-                            >
-                              ✏️
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-)}
-                </div>
-              )}
-
-          {showProduction && currentBusinessType === 'deshidratados' && (
-            <div className="bg-white rounded-xl shadow-md overflow-hidden">
-              <div className="p-4 border-b border-gray-200">
-                <h2 className="text-xl font-bold text-gray-800">🏭 Produccion</h2>
-                <p className="text-sm text-gray-500">Convierte materia prima en producto final</p>
-              </div>
-
-              {productionDashboard && (
-                <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="bg-green-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-green-600 font-semibold">Producido Total</p>
-                    <p className="text-lg font-bold text-green-700">{productionDashboard.totalProduced} kg</p>
-                  </div>
-                  <div className="bg-red-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-red-600 font-semibold">Merma Total</p>
-                    <p className="text-lg font-bold text-red-700">{productionDashboard.totalWaste} kg</p>
-                  </div>
-                  <div className="bg-blue-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-blue-600 font-semibold">Rendimiento Prom.</p>
-                    <p className="text-lg font-bold text-blue-700">{productionDashboard.avgRendimiento.toFixed(1)}%</p>
-                  </div>
-                  <div className="bg-purple-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-purple-600 font-semibold">Lotes</p>
-                    <p className="text-lg font-bold text-purple-700">{productionDashboard.totalBatches}</p>
-                  </div>
-                </div>
-              )}
-
-              <div className="p-4 border-t border-gray-200">
-                <h3 className="font-bold text-gray-800 mb-3">🔄 Nueva Produccion</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Materia Prima</label>
-                    <select
-                      value={productionRawMaterial}
-                      onChange={e => setProductionRawMaterial(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="">Seleccionar...</option>
-                      {rawMaterials.map(p => (
-                        <option key={p.id} value={p.name}>{p.name} (Stock: {p.stock || 0} kg)</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Producto Final</label>
-                    <select
-                      value={productionFinalProduct}
-                      onChange={e => setProductionFinalProduct(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="">Seleccionar...</option>
-                      {finalProducts.map(p => (
-                        <option key={p.id} value={p.name}>{p.name} (Stock: {p.stock || 0} kg)</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad Materia Prima (kg)</label>
-                    <input
-                      type="number"
-                      value={productionRawQty}
-                      onChange={e => setProductionRawQty(e.target.value)}
-                      placeholder="10"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Producto Final Obtenido (kg)</label>
-                    <input
-                      type="number"
-                      value={productionFinalQty}
-                      onChange={e => setProductionFinalQty(e.target.value)}
-                      placeholder="2"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Notas (opcional)</label>
-                    <input
-                      type="text"
-                      value={productionNotes}
-                      onChange={e => setProductionNotes(e.target.value)}
-                      placeholder="Tiempo, temperatura, etc."
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-                </div>
-
-                {Number(productionRawQty) > 0 && Number(productionFinalQty) > 0 && (
-                  <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                    <div className="flex justify-between text-sm">
-                      <span>Rendimiento:</span>
-                      <span className={`font-bold ${Number(calculatedRendimiento()) < 30 ? 'text-red-600' : 'text-green-600'}`}>
-                        {calculatedRendimiento()}%
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm mt-1">
-                      <span>Merma:</span>
-                      <span className="text-red-500 font-semibold">{(Number(productionRawQty) - Number(productionFinalQty)).toFixed(1)} kg</span>
-                    </div>
-                    {Number(calculatedRendimiento()) < 30 && (
-                      <p className="text-xs text-red-500 mt-2">⚠️ Estas perdiendo producto y no lo sabes</p>
-                    )}
-                  </div>
-                )}
-
-                <button
-                  onClick={handleProduction}
-                  disabled={!productionRawMaterial || !productionFinalProduct || !productionRawQty || !productionFinalQty}
-                  className="w-full mt-4 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                >
-                  🏭 Registrar Produccion
-                </button>
-              </div>
-
-              {productions.length > 0 && (
-                <div className="p-4 border-t border-gray-200">
-                  <h3 className="font-bold text-gray-800 mb-3">📋 Historial de Lotes</h3>
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {productions.slice(0, 20).map(prod => (
-                      <div key={prod.id} className="bg-gray-50 rounded-lg p-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-semibold text-sm text-gray-800">{prod.loteId}</p>
-                            <p className="text-xs text-gray-500">
-                              {prod.rawMaterialName} → {prod.finalProductName}
-                            </p>
-                          </div>
-                          <span className={`text-xs px-2 py-1 rounded-full font-bold ${prod.rendimiento >= 30 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                            {prod.rendimiento.toFixed(1)}%
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-xs text-gray-500 mt-2">
-                          <span>{prod.rawMaterialQty} kg → {prod.finalProductQty} kg</span>
-                          <span>Merma: {prod.wasteQty.toFixed(1)} kg</span>
-                        </div>
-                        <p className="text-xs text-gray-400 mt-1">
-                          {new Date(prod.date).toLocaleDateString()} - Costo: ${prod.costoUnitario.toFixed(0)}/kg
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {showFruverDashboard && currentBusinessType === 'fruver' && (
-            <div className="bg-white rounded-xl shadow-md overflow-hidden">
-              <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-                <div>
-                  <h2 className="text-xl font-bold text-gray-800">🥬 Fruver Dashboard</h2>
-                  <p className="text-sm text-gray-500">Hoy estas ganando o perdiendo</p>
-                </div>
-                <button
-                  onClick={() => { setShowWasteModal(true) }}
-                  className="py-2 px-4 bg-red-100 text-red-700 rounded-lg font-semibold hover:bg-red-200 text-sm"
-                >
-                  🗑️ Registrar Merma
-                </button>
-              </div>
-
-              {fruverDashboard && (
-                <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="bg-green-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-green-600 font-semibold">Ventas Hoy</p>
-                    <p className="text-lg font-bold text-green-700">{formatCOP(fruverDashboard.ventasHoy)}</p>
-                  </div>
-                  <div className="bg-red-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-red-600 font-semibold">Merma Hoy</p>
-                    <p className="text-lg font-bold text-red-700">{fruverDashboard.mermaHoy.toFixed(1)} kg</p>
-                  </div>
-                  <div className="bg-blue-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-blue-600 font-semibold">Ganancia Hoy</p>
-                    <p className={`text-lg font-bold ${fruverDashboard.gananciaHoy >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
-                      {formatCOP(fruverDashboard.gananciaHoy)}
-                    </p>
-                  </div>
-                  <div className="bg-orange-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-orange-600 font-semibold">Productos Criticos</p>
-                    <p className="text-lg font-bold text-orange-700">{fruverDashboard.productosCriticos.length}</p>
-                  </div>
-                </div>
-              )}
-
-              {fruverDashboard && fruverDashboard.productosCriticos.length > 0 && (
-                <div className="p-4 border-t border-gray-200">
-                  <h3 className="font-bold text-red-600 mb-3">⚠️ Vende esto hoy o lo pierdes</h3>
-                  <div className="space-y-2">
-                    {fruverDashboard.productosCriticos.map((p, i) => (
-                      <div key={i} className="bg-red-50 border border-red-200 rounded-lg p-3 flex justify-between items-center">
-                        <div>
-                          <p className="font-semibold text-sm">{p.name}</p>
-                          <p className="text-xs text-gray-500">Stock: {p.stock.toFixed(1)} kg</p>
-                        </div>
-                        <span className={`text-xs px-2 py-1 rounded-full font-bold ${p.diasRestantes <= 0 ? 'bg-red-200 text-red-800' : 'bg-orange-200 text-orange-800'}`}>
-                          {p.diasRestantes <= 0 ? 'VENCIDO' : `${p.diasRestantes} dias`}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          <FruverView
+            show={showFruverDashboard}
+            fruverDashboard={fruverDashboard as any}
+            onRegisterWaste={() => setShowWasteModal(true)}
+          />
 
           {showWasteModal && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={() => setShowWasteModal(false)}>
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-xl font-bold text-gray-800">🗑️ Registrar Merma</h2>
-                  <button onClick={() => setShowWasteModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Producto</label>
-                    <select
-                      value={wasteProduct}
-                      onChange={e => setWasteProduct(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                    >
-                      <option value="">Seleccionar...</option>
-                      {inventory.map(p => (
-                        <option key={p.name} value={p.name}>{p.name} (Stock: {p.quantity} kg)</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad perdida (kg)</label>
-                    <input
-                      type="number"
-                      value={wasteQty}
-                      onChange={e => setWasteQty(e.target.value)}
-                      placeholder="0.5"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                      step="0.1"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Motivo</label>
-                    <input
-                      type="text"
-                      value={wasteReason}
-                      onChange={e => setWasteReason(e.target.value)}
-                      placeholder="Dano, vencimiento, etc."
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                    />
-                  </div>
-                  <div className="flex gap-3 pt-2">
-                    <button
-                      onClick={() => setShowWasteModal(false)}
-                      className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={handleRegisterWaste}
-                      className="flex-1 py-3 px-4 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700"
-                    >
-                      Registrar Merma
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <WasteModal
+              show={showWasteModal}
+              wasteProduct={wasteProduct}
+              wasteQty={wasteQty}
+              wasteReason={wasteReason}
+              inventory={inventory}
+              onProductChange={setWasteProduct}
+              onQtyChange={setWasteQty}
+              onReasonChange={setWasteReason}
+              onRegister={handleRegisterWaste}
+              onClose={() => setShowWasteModal(false)}
+            />
           )}
 
-{!showHistory && !showSummary && !showConfig && !showInventory && !showProduction && !showFruverDashboard && (
-            <>
-              <p className="text-center text-sm text-gray-500">Negocio ID: {currentBusinessId}</p>
-              
-              {!licenseState.isActivated && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
-                  <p className="text-sm text-yellow-800 font-semibold">🔒 Modo FREE - Solo Ventas disponibles</p>
-                  <button
-                    onClick={() => {
-                      localStorage.removeItem('lioncore_license')
-                      window.location.reload()
-                    }}
-                    className="text-xs text-yellow-600 underline mt-1"
-                  >
-                    Resetear licencia
-                  </button>
-                </div>
-              )}
-
-              <div className="bg-white rounded-xl shadow-md p-4">
-                <div className="flex gap-2">
-                  {getAvailableModes().map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setMode(m)}
-                      className={`flex-1 py-3 px-4 rounded-lg font-semibold uppercase text-sm transition-all duration-200 ${
-                        mode === m
-                          ? 'bg-blue-600 text-white shadow-md'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      {m}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-md p-4">
-                <div className="flex gap-2">
-                  <div className="relative flex-2 flex-1">
-                    <input
-                      type="text"
-                      placeholder={editingId ? 'Editando producto...' : mode === 'venta' ? 'Buscar producto...' : 'Producto'}
-                      value={producto}
-                      onChange={async (e) => {
-                        setProducto(e.target.value)
-                        if (mode === 'venta' && e.target.value.length > 1) {
-                          const stockData = await getStockByProduct()
-                          const filtered = stockData.filter(p => 
-                            p.name.toLowerCase().includes(e.target.value.toLowerCase()) && p.quantity > 0
-                          )
-                          setProductSuggestions(filtered.map(p => ({ name: p.name, stock: p.quantity, lastPrice: p.lastPrice })))
-                          setShowProductDropdown(filtered.length > 0)
-                        } else {
-                          setShowProductDropdown(false)
-                        }
-                      }}
-                      onFocus={async () => {
-                        if (mode === 'venta' && producto.length > 1) {
-                          const stockData = await getStockByProduct()
-                          const filtered = stockData.filter(p => 
-                            p.name.toLowerCase().includes(producto.toLowerCase()) && p.quantity > 0
-                          )
-                          setProductSuggestions(filtered.map(p => ({ name: p.name, stock: p.quantity, lastPrice: p.lastPrice })))
-                          setShowProductDropdown(filtered.length > 0)
-                        }
-                      }}
-                      onBlur={() => setTimeout(() => setShowProductDropdown(false), 150)}
-                      onKeyPress={handleKeyPress}
-                      className={`w-full py-3 px-4 border rounded-lg focus:outline-none focus:ring-2 ${
-                        editingId ? 'border-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
-                      } focus:border-transparent`}
-                    />
-                    {showProductDropdown && productSuggestions.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                        {productSuggestions.map((p, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => {
-                              setProducto(p.name)
-                              if (p.lastPrice) setPrecio(String(p.lastPrice))
-                              setShowProductDropdown(false)
-                            }}
-                            className="w-full px-4 py-3 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
-                          >
-                            <div className="flex justify-between items-center">
-                              <span className="font-medium text-gray-800">{p.name}</span>
-                              <div className="text-right">
-                                <span className={`text-sm font-semibold ${p.stock > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                  Stock: {p.stock}
-                                </span>
-                                {p.lastPrice && (
-                                  <span className="ml-3 text-sm text-blue-600">
-                                    Anterior: {formatCOP(p.lastPrice)}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {mode !== 'produccion' && (
-                    <input
-                      type="number"
-                      placeholder={`Cantidad (${currentTpl.unidad})`}
-                      value={cantidad}
-                      onChange={(e) => setCantidad(Math.max(1, Number(e.target.value)))}
-                      min={1}
-                      onKeyPress={handleKeyPress}
-                      className={`w-20 py-3 px-3 text-center border rounded-lg focus:outline-none focus:ring-2 ${
-                        editingId ? 'border-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
-                      } focus:border-transparent`}
-                    />
-                  )}
-                  <input
-                    type="number"
-                    placeholder={mode === 'produccion' ? 'Costo materia prima' : 'Precio'}
-                    value={precio}
-                    onChange={(e) => setPrecio(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    min={0}
-                    className={`w-28 py-3 px-3 text-right border rounded-lg focus:outline-none focus:ring-2 ${
-                      editingId ? 'border-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
-                    } focus:border-transparent`}
-                  />
-                  <button
-                    onClick={editingId ? handleActualizar : handleAgregar}
-                    className={`py-3 px-6 font-semibold rounded-lg transition-colors duration-200 ${
-                      editingId
-                        ? 'bg-amber-500 text-white hover:bg-amber-600'
-                        : 'bg-green-600 text-white hover:bg-green-700'
-                    }`}
-                  >
-                    {editingId ? '✏️ Actualizar' : '+ Agregar'}
-                  </button>
-                  {editingId && (
-                    <button
-                      onClick={handleCancelarEdicion}
-                      className="py-3 px-4 bg-gray-400 text-white rounded-lg font-semibold hover:bg-gray-500 transition-colors duration-200"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {mode === 'produccion' && items.length > 0 && (
-                <div className="bg-purple-50 rounded-xl shadow-md p-4">
-                  <h3 className="text-purple-700 font-semibold mb-2">💡 Costo Calculado</h3>
-                  <div className="text-sm text-purple-600 space-y-1">
-                    <p>Materiales: {formatCOP(total)}</p>
-                    <p className="text-xs text-purple-500">El precio de venta se calculará con los costos configurados</p>
-                  </div>
-                </div>
-              )}
-
-              {mode === 'produccion' && (
-                <div className="bg-white rounded-xl shadow-md p-4">
-                  <button
-                    onClick={() => setShowProductionDetails(!showProductionDetails)}
-                    className="text-blue-600 font-semibold text-sm flex items-center gap-2"
-                  >
-                    {showProductionDetails ? '▼ Ocultar detalles' : '+ Ver más detalles'}
-                  </button>
-
-                  {showProductionDetails && (
-                    <div className="mt-4 space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">Peso entrada (kg)</label>
-                          <input
-                            type="number"
-                            placeholder="0"
-                            value={productionMeta.pesoEntrada}
-                            onChange={(e) => setProductionMeta({ ...productionMeta, pesoEntrada: e.target.value })}
-                            className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">Peso salida (kg)</label>
-                          <input
-                            type="number"
-                            placeholder="0"
-                            value={productionMeta.pesoSalida}
-                            onChange={(e) => setProductionMeta({ ...productionMeta, pesoSalida: e.target.value })}
-                            className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">Desperdicio (kg)</label>
-                          <input
-                            type="number"
-                            placeholder="0"
-                            value={productionMeta.desperdicio}
-                            onChange={(e) => setProductionMeta({ ...productionMeta, desperdicio: e.target.value })}
-                            className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">Tiempo (min)</label>
-                          <input
-                            type="number"
-                            placeholder="0"
-                            value={productionMeta.tiempo}
-                            onChange={(e) => setProductionMeta({ ...productionMeta, tiempo: e.target.value })}
-                            className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <label className="block text-xs text-gray-500 mb-1">Notas</label>
-                          <input
-                            type="text"
-                            placeholder="Opcional"
-                            value={productionMeta.notas || ''}
-                            onChange={(e) => setProductionMeta({ ...productionMeta, notas: e.target.value })}
-                            className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="bg-white rounded-xl shadow-md overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr className="text-left text-sm text-gray-500 uppercase">
-                      <th className="py-3 px-4">Producto</th>
-                      <th className="py-3 px-2 text-center w-20">Cant.</th>
-                      <th className="py-3 px-2 text-right w-28">Precio</th>
-                      <th className="py-3 px-2 text-right w-32">Subtotal</th>
-                      <th className="py-3 px-2 text-center w-24">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="py-12 text-center text-gray-400">
-                          Sin productos agregados
-                        </td>
-                      </tr>
-                    ) : (
-                      items.map((item, index) => (
-                        <tr
-                          key={item.id}
-                          className={`border-t border-gray-100 ${
-                            editingId === item.id ? 'bg-yellow-100' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                          }`}
-                        >
-                          <td className="py-3 px-4 font-medium text-gray-800">{item.producto}</td>
-                          <td className="py-3 px-2 text-center text-gray-600">x{item.cantidad}</td>
-                          <td className="py-3 px-2 text-right text-gray-600">{formatCOP(item.precio)}</td>
-                          <td className="py-3 px-2 text-right font-semibold text-gray-800">
-                            {formatCOP(item.cantidad * item.precio)}
-                          </td>
-                          <td className="py-3 px-2 text-center flex gap-1">
-                            <button
-                              onClick={() => handleEditar(item)}
-                              className="text-blue-500 hover:text-blue-700 transition-colors p-1"
-                              title="Editar"
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              onClick={() => handleEliminar(item.id)}
-                              className="text-red-500 hover:text-red-700 transition-colors p-1"
-                              title="Eliminar"
-                            >
-                              🗑
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-md p-4">
-                <div className="flex justify-between items-center">
-                  <h2 className="text-xl font-semibold text-gray-700">Total</h2>
-                  <h2 className="text-3xl font-bold text-blue-600">{formatCOP(total)}</h2>
-                </div>
-              </div>
-
-              {mode === 'venta' && (
-                <div className="bg-blue-50 rounded-xl p-4 mb-4">
-                  <label className="text-sm font-semibold text-blue-700 mb-2 block">📱 WhatsApp Cliente</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="Nombre (opcional)"
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                      className="flex-1 py-2 px-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                    <input
-                      type="tel"
-                      placeholder="3138777115"
-                      value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value)}
-                      className="w-32 py-2 px-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-3">
-                {mode === 'venta' && (
-                  <button
-                    onClick={async () => {
-                      if (items.length === 0) return
-                      await handleSendWhatsApp()
-                    }}
-                    disabled={items.length === 0 || loading}
-                    className={`flex-1 py-4 rounded-xl font-bold text-lg transition-colors duration-200 ${
-                      items.length === 0 || loading
-                        ? 'bg-green-300 text-green-500 cursor-not-allowed'
-                        : 'bg-green-600 text-white hover:bg-green-700'
-                    }`}
-                  >
-                    📱 WhatsApp
-                  </button>
-                )}
-                {mode === 'venta' && (
-                  <button
-                    onClick={handleImprimir}
-                    disabled={items.length === 0 || loading}
-                    className={`flex-1 py-4 rounded-xl font-bold text-lg transition-colors duration-200 ${
-                      items.length === 0 || loading
-                        ? 'bg-purple-300 text-purple-500 cursor-not-allowed'
-                        : 'bg-purple-600 text-white hover:bg-purple-700'
-                    }`}
-                  >
-                    Imprimir Factura
-                  </button>
-                )}
-                <button
-                  onClick={handleGuardar}
-                  disabled={items.length === 0 || loading}
-                  className={`flex-1 py-4 rounded-xl font-bold text-lg transition-colors duration-200 ${
-                    items.length === 0 || loading
-                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-blue-600 text-white hover:bg-blue-700'
-                  }`}
-                >
-                  {loading ? 'Guardando...' : 'Guardar transacción'}
-                </button>
-              </div>
-            </>
+          {!showHistory && !showSummary && !showConfig && !showInventory && !showProduction && !showFruverDashboard && (
+            <TransactionForm
+              mode={mode}
+              onModeChange={setMode}
+              producto={producto}
+              onProductoChange={setProducto}
+              cantidad={cantidad}
+              onCantidadChange={(v) => setCantidad(Math.max(1, v))}
+              precio={precio}
+              onPrecioChange={setPrecio}
+              editingId={editingId}
+              items={items}
+              total={total}
+              loading={loading}
+              customerName={customerName}
+              onCustomerNameChange={setCustomerName}
+              customerPhone={customerPhone}
+              onCustomerPhoneChange={setCustomerPhone}
+              showProductionDetails={showProductionDetails}
+              onToggleProductionDetails={() => setShowProductionDetails(!showProductionDetails)}
+              productionMeta={productionMeta}
+              onProductionMetaChange={(field, value) => setProductionMeta((prev: any) => ({ ...prev, [field]: value }))}
+              currentTpl={currentTpl}
+              licenseState={licenseState}
+              currentBusinessId={currentBusinessId}
+              availableModes={getAvailableModes()}
+              onAgregar={handleAgregar}
+              onActualizar={handleActualizar}
+              onCancelarEdicion={handleCancelarEdicion}
+              onEditar={handleEditar}
+              onEliminar={handleEliminar}
+              onGuardar={handleGuardar}
+              onImprimir={handleImprimir}
+              onWhatsApp={handleSendWhatsApp}
+            />
           )}
 
-          {showHistory && (
-            <div className="bg-white rounded-xl shadow-md overflow-hidden">
-              <div className="p-4 border-b border-gray-200">
-                <h2 className="text-xl font-bold text-gray-800">Historial de Transacciones</h2>
-                <p className="text-sm text-gray-500">{transactions.length} transacciones</p>
-              </div>
-
-              {loadingHistory ? (
-                <div className="p-12 text-center text-gray-500">
-                  Cargando...
-                </div>
-              ) : transactions.length === 0 ? (
-                <div className="p-12 text-center">
-                  <p className="text-gray-400 text-lg mb-2">No hay transacciones registradas</p>
-                  <p className="text-gray-400 text-sm">Guarda una transacción para ver el historial</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-100">
-                  {transactions.map((tx) => (
-                    <div key={tx.id} className="p-4 flex justify-between items-center hover:bg-gray-50">
-                      <div>
-                        <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getTypeStyle(tx.type)}`}>
-                          {tx.type.toUpperCase()}
-                        </span>
-                        <p className="text-sm text-gray-500 mt-1">{formatDate(tx.date)}</p>
-                        {tx.type === 'produccion' && tx.meta && (
-                          <div className="mt-2 text-xs text-gray-400 space-y-1">
-                            {tx.meta.peso_entrada && <p>Peso entrada: {tx.meta.peso_entrada}kg</p>}
-                            {tx.meta.peso_salida && <p>Peso salida: {tx.meta.peso_salida}kg</p>}
-                            {tx.meta.desperdicio && <p>Desperdicio: {tx.meta.desperdicio}kg</p>}
-                            {tx.meta.tiempo && <p>Tiempo: {tx.meta.tiempo} min</p>}
-                            {tx.meta.notas && <p>Notas: {tx.meta.notas}</p>}
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xl font-bold text-gray-800">{formatCOP(tx.total)}</p>
-                        <p className="text-xs text-gray-400">#{tx.id}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          <HistoryView
+            show={showHistory}
+            transactions={transactions as any}
+            loadingHistory={loadingHistory}
+          />
 
           {showLicenseModal && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
-                <button
-                  onClick={() => { setShowLicenseModal(false); setLicenseStatus(null); setLicenseEmail(''); }}
-                  className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors font-bold text-lg"
-                >
-                  ✕
-                </button>
-                <div className="text-center mb-6">
-                  <div className="text-4xl mb-2">🔑</div>
-                  <h2 className="text-2xl font-bold text-gray-800">Activar Licencia</h2>
-                  <p className="text-sm text-gray-500 mt-1">Ingresa tu email para validar la licencia</p>
-                </div>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                    <input
-                      type="email"
-                      value={licenseEmail}
-                      onChange={(e) => { setLicenseEmail(e.target.value); setLicenseStatus(null); }}
-                      placeholder="tu@email.com"
-                      className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      onKeyDown={(e) => e.key === 'Enter' && handleActivateLicense()}
-                    />
-                  </div>
-                  
-                  {licenseStatus && (
-                    <div className={`p-3 rounded-lg text-sm ${licenseStatus.success ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                      {licenseStatus.message}
-                    </div>
-                  )}
-                  
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => { setShowLicenseModal(false); setLicenseStatus(null); setLicenseEmail(''); }}
-                      className="flex-1 py-3 px-4 border border-gray-300 rounded-lg font-semibold text-gray-600 hover:bg-gray-50"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={handleActivateLicense}
-                      disabled={!licenseEmail}
-                      className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                    >
-                      Activar
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="mt-6 pt-4 border-t border-gray-200">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-2">Planes disponibles:</h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                      <span className="font-medium">Free</span>
-                      <span className="text-gray-500">Ventas + Exportar</span>
-                    </div>
-                    <div className="flex justify-between items-center p-2 bg-purple-50 rounded">
-                      <span className="font-medium text-purple-600">Pro</span>
-                      <span className="text-purple-600">Todas las funciones</span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="mt-4">
-                  <button
-                    onClick={() => { setShowLicenseModal(false); setShowPaymentModal(true); }}
-                    className="w-full py-3 px-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-bold hover:from-green-600 hover:to-green-700 shadow-lg flex items-center justify-center gap-2"
-                  >
-                    💳 Pagar aquí
-                  </button>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-gray-200">
-                  <button
-                    onClick={async () => {
-                      try {
-                        const data = await fetchSheetData()
-                        setLicenseDebug(JSON.stringify(data, null, 2))
-                      } catch (e: any) {
-                        setLicenseDebug(`Error: ${e.message}`)
-                      }
-                    }}
-                    className="w-full py-2 px-4 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200"
-                  >
-                    🔍 Ver datos del Sheet
-                  </button>
-                  {licenseDebug && (
-                    <pre className="mt-2 p-2 bg-gray-900 text-green-400 rounded-lg text-xs overflow-auto max-h-48 font-mono whitespace-pre-wrap">
-                      {licenseDebug}
-                    </pre>
-                  )}
-                </div>
-              </div>
-            </div>
+            <LicenseModal
+              show={showLicenseModal}
+              email={licenseEmail}
+              status={licenseStatus}
+              debug={licenseDebug}
+              onEmailChange={(v) => { setLicenseEmail(v); setLicenseStatus(null) }}
+              onActivate={handleActivateLicense}
+              onClose={() => { setShowLicenseModal(false); setLicenseStatus(null); setLicenseEmail('') }}
+              onShowPayment={() => { setShowLicenseModal(false); setShowPaymentModal(true) }}
+              onFetchSheetData={async () => {
+                try {
+                  const data = await fetchSheetData()
+                  setLicenseDebug(JSON.stringify(data, null, 2))
+                } catch (e: any) {
+                  setLicenseDebug(`Error: ${e.message}`)
+                }
+              }}
+            />
           )}
 
           {showPaymentModal && (
-            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden relative">
-                <button
-                  onClick={() => setShowPaymentModal(false)}
-                  className="absolute top-3 right-3 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-white/90 hover:bg-white text-gray-600 hover:text-gray-800 transition-colors font-bold text-lg shadow-md"
-                >
-                  ✕
-                </button>
-                <div className="bg-gradient-to-r from-green-500 to-green-600 p-4 text-center">
-                  <h2 className="text-xl font-bold text-white">💳 Pagar para Activar</h2>
-                  <p className="text-green-100 text-sm mt-1">Realiza el pago y envía el comprobante</p>
-                </div>
-                
-                <div className="p-6">
-                  <div className="bg-gray-50 p-4 rounded-xl border-2 border-dashed border-gray-300 mb-4 flex justify-center">
-                    <img src="/QR.jpeg" alt="QR de Pago" className="w-48 h-48 object-contain" />
-                  </div>
-                  
-                  <a
-                    href="https://wa.me/573138777115?text=Hola!%20Acabo%20de%20pagar%20mi%20licencia%20de%20LionCore%20POS.%20Env%C3%ADo%20comprobante%20de%20pago."
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block bg-green-500 border-2 border-green-600 rounded-xl p-4 mb-4 cursor-pointer hover:bg-green-600 hover:shadow-lg transition-all text-center"
-                  >
-                    <p className="text-white font-bold text-lg mb-1">
-                      📸 Enviar comprobante de pago
-                    </p>
-                    <p className="text-green-100 text-sm">Toca aquí para abrir WhatsApp</p>
-                    <div className="flex items-center justify-center gap-2 mt-2">
-                      <span className="text-white text-2xl">📱</span>
-                      <span className="text-white text-xl font-bold">313 877 7115</span>
-                    </div>
-                  </a>
-                </div>
-              </div>
-            </div>
+            <PaymentQrModal
+              show={showPaymentModal}
+              onClose={() => setShowPaymentModal(false)}
+              onCashPayment={() => {
+                saveLicenseState({
+                  email: 'efectivo-local',
+                  plan: 'pro',
+                  isActivated: true,
+                  expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+                  lastChecked: new Date().toISOString(),
+                  lastOnlineCheck: new Date().toISOString(),
+                  deviceId: getDeviceId(),
+                })
+                setShowPaymentModal(false)
+                showNotification('success', 'Licencia PRO activada por pago en efectivo')
+                setTimeout(() => window.location.reload(), 1500)
+              }}
+            />
           )}
 
           {showUpgradeModal && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
-                <button
-                  onClick={() => setShowUpgradeModal(null)}
-                  className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors font-bold text-lg"
-                >
-                  ✕
-                </button>
-                <div className="text-center mb-6">
-                  <div className="text-4xl mb-2">🚀</div>
-                  <h2 className="text-xl font-bold text-gray-800">{showUpgradeModal.title}</h2>
-                  <p className="text-sm text-gray-500 mt-2">{showUpgradeModal.message}</p>
-                </div>
-                
-                <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-4 mb-4">
-                  <h3 className="font-semibold text-purple-700 mb-2">Beneficios PRO:</h3>
-                  <ul className="space-y-1 text-sm text-gray-700">
-                    <li>✅ Compras de materia prima</li>
-                    <li>✅ Registro de gastos</li>
-                    <li>✅ Configuración de costos</li>
-                    <li>✅ Control total de producción</li>
-                    <li>✅ Reportes avanzados</li>
-                  </ul>
-                </div>
-                
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setShowUpgradeModal(null)}
-                    className="flex-1 py-3 px-4 border border-gray-300 rounded-lg font-semibold text-gray-600 hover:bg-gray-50"
-                  >
-                    Ahora no
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowUpgradeModal(null)
-                      setShowPaymentModal(true)
-                    }}
-                    className="flex-1 py-3 px-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-bold hover:from-green-600 hover:to-green-700 shadow-lg"
-                  >
-                    💳 Pagar aquí
-                  </button>
-                </div>
-              </div>
-            </div>
+            <UpgradeModal
+              show={showUpgradeModal}
+              onClose={() => setShowUpgradeModal(null)}
+              onPay={() => { setShowUpgradeModal(null); setShowPaymentModal(true) }}
+            />
           )}
 
           {showReferrals && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={() => setShowReferrals(false)}>
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 text-center" onClick={e => e.stopPropagation()}>
-                <div className="text-5xl mb-3">🎁</div>
-                <h2 className="text-2xl font-bold text-gray-800 mb-2">Invita y gana</h2>
-                <p className="text-gray-600 mb-4">Invita a un amigo y gana $10.000 en credito</p>
-                
-                <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                  <p className="text-sm text-gray-500 mb-2">Tu mensaje de invitacion:</p>
-                  <p className="text-sm font-mono bg-white p-3 rounded border text-left">
-                    Hola! Te recomiendo LionCore, el mejor POS para tu negocio. Registrate aqui 👇
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  <button
-                    onClick={() => {
-                      const msg = encodeURIComponent('Hola! Te recomiendo LionCore, el mejor POS para tu negocio. Registrate aqui!')
-                      window.open(`https://wa.me/573138777115?text=${msg}`, '_blank')
-                      setShowReferrals(false)
-                    }}
-                    className="w-full py-3 px-4 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 flex items-center justify-center gap-2"
-                  >
-                    <span>📱</span> Enviar por WhatsApp
-                  </button>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText('https://lioncore.app/ref')
-                      showNotification('success', 'Link copiado!')
-                    }}
-                    className="w-full py-3 px-4 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50"
-                  >
-                    📋 Copiar link
-                  </button>
-                </div>
-
-                <button
-                  onClick={() => setShowReferrals(false)}
-                  className="mt-3 text-sm text-gray-500 hover:text-gray-700"
-                >
-                  Cerrar
-                </button>
-              </div>
-            </div>
+            <ReferralsModal
+              show={showReferrals}
+              onClose={() => setShowReferrals(false)}
+            />
           )}
 
-          {showServices && (
-            <div className="bg-white rounded-xl shadow-md overflow-hidden">
-              <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-                <div>
-                  <h2 className="text-xl font-bold text-gray-800">🔧 Servicios Técnicos</h2>
-                  <p className="text-sm text-gray-500">{serviceOrders.length} ordenes</p>
-                </div>
-                <button
-                  onClick={() => setShowServiceModal(true)}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700"
-                >
-                  + Nueva Orden
-                </button>
-              </div>
+          <ServicesView
+            show={showServices}
+            serviceOrders={serviceOrders}
+            onNewOrder={() => setShowServiceModal(true)}
+            onUpdateStatus={async (orderId, status) => { await handleUpdateServiceStatus(orderId, status as any) }}
+            onSendWhatsApp={async (phone, device, price) => { await sendWhatsAppReceipt(phone, `Servicio ${device}`, price) }}
+          />
 
-              {serviceOrders.length === 0 ? (
-                <div className="p-12 text-center text-gray-500">
-                  <div className="text-6xl mb-4">🔧</div>
-                  <p>No hay ordenes de servicio</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-200">
-                  {serviceOrders.map(order => (
-                    <div key={order.id} className="p-4 hover:bg-gray-50">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <h3 className="font-semibold text-gray-800">{order.clientName}</h3>
-                          <p className="text-sm text-gray-600">{order.device}</p>
-                          <p className="text-xs text-gray-500 mt-1">{order.problem}</p>
-                        </div>
-                        <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                          order.status === 'recibido' ? 'bg-gray-200 text-gray-700' :
-                          order.status === 'en_proceso' ? 'bg-yellow-200 text-yellow-800' :
-                          order.status === 'terminado' ? 'bg-green-200 text-green-800' :
-                          'bg-blue-200 text-blue-800'
-                        }`}>
-                          {order.status.replace('_', ' ')}
-                        </span>
-                      </div>
-                      {order.price && (
-                        <p className="text-sm font-bold text-green-600 mb-2">
-                          ${order.price.toLocaleString('es-CO')}
-                        </p>
-                      )}
-                      <div className="flex gap-2 mt-2">
-                        {order.status === 'recibido' && order.id && (
-                          <button
-                            onClick={() => handleUpdateServiceStatus(order.id!, 'en_proceso')}
-                            className="text-xs bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600"
-                          >
-                            En proceso
-                          </button>
-                        )}
-                        {order.status === 'en_proceso' && order.id && (
-                          <button
-                            onClick={() => handleUpdateServiceStatus(order.id!, 'terminado')}
-                            className="text-xs bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
-                          >
-                            Terminado
-                          </button>
-                        )}
-                        {order.status === 'terminado' && order.id && (
-                          <button
-                            onClick={async () => {
-                              await handleUpdateServiceStatus(order.id!, 'entregado')
-                              if (order.clientPhone) {
-                                await sendWhatsAppReceipt(order.clientPhone, `Servicio ${order.device}`, order.price || 0)
-                              }
-                            }}
-                            className="text-xs bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
-                          >
-                            Entregar
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {currentBusinessType === 'service_store' && (
-            <div className="bg-white rounded-xl shadow-md overflow-hidden">
-              <div className="p-4 border-b border-gray-200">
-                <div className="flex justify-between items-center mb-3">
-                  <div>
-                    <h2 className="text-xl font-bold text-gray-800">📦 Bodegas</h2>
-                    <p className="text-sm text-gray-500">{warehouses.length} ubicaciones</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setShowTransferModal(true)}
-                      className="bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-semibold hover:bg-orange-700"
-                    >
-                      🔄 Transferir
-                    </button>
-                    <button
-                      onClick={() => setShowWarehouseModal(true)}
-                      className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700"
-                    >
-                      + Bodega
-                    </button>
-                  </div>
-                </div>
-
-                {warehouses.length > 0 && (
-                  <div className="flex gap-2 mb-3 overflow-x-auto">
-                    {warehouses.map(wh => (
-                      <div key={wh.id} className="flex items-center gap-1">
-                        <button
-                          key={wh.id}
-                          onClick={() => {
-                            setSelectedWarehouse(wh.id!)
-                            loadWarehouseStock(wh.id!)
-                          }}
-                          className={`px-3 py-1 rounded-full text-sm font-semibold whitespace-nowrap ${
-                            selectedWarehouse === wh.id
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                          }`}
-                        >
-                          {wh.name} {wh.isDefault ? '⭐' : ''}
-                        </button>
-                        {!wh.isDefault && (
-                          <button
-                            onClick={() => handleDeleteWarehouse(wh.id!)}
-                            className="text-red-500 hover:text-red-700 text-sm px-1"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {selectedWarehouse && warehouseStock.length > 0 && (
-                  <div className="divide-y divide-gray-200 max-h-60 overflow-y-auto">
-                    {warehouseStock.map(stock => (
-                      <div key={stock.id} className="py-2 flex justify-between items-center">
-                        <div>
-                          <span className="font-medium text-gray-800">{stock.productName}</span>
-                          {stock.category && (
-                            <span className="ml-2 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                              {stock.category}
-                            </span>
-                          )}
-                          {stock.imei && (
-                            <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded">
-                              IMEI: {stock.imei}
-                            </span>
-                          )}
-                        </div>
-                        <span className="font-bold text-gray-800">{stock.quantity}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          <WarehousesView
+            warehouses={warehouses}
+            selectedWarehouse={selectedWarehouse}
+            warehouseStock={warehouseStock}
+            onSelectWarehouse={(id) => { setSelectedWarehouse(id); loadWarehouseStock(id) }}
+            onDeleteWarehouse={(id) => handleDeleteWarehouse(id)}
+            onNewWarehouse={() => setShowWarehouseModal(true)}
+            onTransfer={() => setShowTransferModal(true)}
+          />
 
           {showServiceModal && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-                <div className="p-6">
-                  <h2 className="text-xl font-bold text-gray-800 mb-4">🔧 Nueva Orden de Servicio</h2>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Nombre del Cliente *</label>
-                      <input
-                        type="text"
-                        value={serviceClientName}
-                        onChange={(e) => setServiceClientName(e.target.value)}
-                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Juan Perez"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Telefono (WhatsApp)</label>
-                      <input
-                        type="tel"
-                        value={serviceClientPhone}
-                        onChange={(e) => setServiceClientPhone(e.target.value)}
-                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="3138777115"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Equipo *</label>
-                      <input
-                        type="text"
-                        value={serviceDevice}
-                        onChange={(e) => setServiceDevice(e.target.value)}
-                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Laptop HP Pavilion"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Problema *</label>
-                      <textarea
-                        value={serviceProblem}
-                        onChange={(e) => setServiceProblem(e.target.value)}
-                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        rows={3}
-                        placeholder="No enciende, pantalla azul..."
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-sm font-medium text-gray-700">Costo estimado</label>
-                        <input
-                          type="number"
-                          value={serviceCost}
-                          onChange={(e) => setServiceCost(e.target.value)}
-                          className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="50000"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium text-gray-700">Precio venta</label>
-                        <input
-                          type="number"
-                          value={servicePrice}
-                          onChange={(e) => setServicePrice(e.target.value)}
-                          className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="150000"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="px-6 pb-6 flex gap-3">
-                  <button
-                    onClick={() => setShowServiceModal(false)}
-                    className="flex-1 py-3 px-4 border border-gray-300 rounded-lg font-semibold text-gray-600 hover:bg-gray-50"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={handleCreateServiceOrder}
-                    className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700"
-                  >
-                    Crear Orden
-                  </button>
-                </div>
-              </div>
-            </div>
+            <ServiceOrderModal
+              show={showServiceModal}
+              serviceClientName={serviceClientName}
+              serviceClientPhone={serviceClientPhone}
+              serviceDevice={serviceDevice}
+              serviceProblem={serviceProblem}
+              serviceCost={serviceCost}
+              servicePrice={servicePrice}
+              onClientNameChange={setServiceClientName}
+              onClientPhoneChange={setServiceClientPhone}
+              onDeviceChange={setServiceDevice}
+              onProblemChange={setServiceProblem}
+              onCostChange={setServiceCost}
+              onPriceChange={setServicePrice}
+              onCreate={handleCreateServiceOrder}
+              onClose={() => setShowServiceModal(false)}
+            />
           )}
 
           {!showConfig && !showSummary && !showHistory && !showInventory && !showMoreMenu && !showServices && (
@@ -3335,813 +1624,190 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
           </div>
 
           {showDeviceModal && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
-                <button
-                  onClick={() => setShowDeviceModal(false)}
-                  className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors font-bold text-lg"
-                >
-                  ✕
-                </button>
-                <div className="text-center mb-6">
-                  <div className="text-4xl mb-2">💻</div>
-                  <h2 className="text-2xl font-bold text-gray-800">Info del Dispositivo</h2>
-                </div>
-                
-                <div className="space-y-3">
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <p className="text-xs text-gray-500">Device ID</p>
-                    <p className="font-mono text-sm font-bold text-gray-800 break-all">{getDeviceId()}</p>
-                  </div>
-                  {licenseState.isActivated && (
-                    <>
-                      <div className="bg-gray-50 rounded-lg p-3">
-                        <p className="text-xs text-gray-500">Email</p>
-                        <p className="text-sm font-semibold text-gray-800">{licenseState.email}</p>
-                      </div>
-                      <div className="bg-gray-50 rounded-lg p-3">
-                        <p className="text-xs text-gray-500">Plan</p>
-                        <p className={`text-sm font-bold ${licenseState.plan === 'pro' ? 'text-purple-600' : licenseState.plan === 'enterprise' ? 'text-yellow-600' : 'text-gray-600'}`}>
-                          {licenseState.plan.toUpperCase()}
-                        </p>
-                      </div>
-                      {licenseStatusCheck.daysLeft >= 0 && (
-                        <div className={`rounded-lg p-3 ${licenseStatusCheck.daysLeft <= 7 ? 'bg-amber-50 border border-amber-200' : 'bg-green-50'}`}>
-                          <p className="text-xs text-gray-500">Días restantes</p>
-                          <p className={`text-lg font-bold ${licenseStatusCheck.daysLeft <= 7 ? 'text-amber-600' : 'text-green-600'}`}>
-                            {licenseStatusCheck.daysLeft} días
-                          </p>
-                        </div>
-                      )}
-                      {licenseStatusCheck.isExpired && (
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                          <p className="text-sm font-bold text-red-600">⚠️ Licencia expirada</p>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-                
-                <div className="flex gap-3 mt-6">
-                  <button
-                    onClick={() => setShowDeviceModal(false)}
-                    className="flex-1 py-3 px-4 border border-gray-300 rounded-lg font-semibold text-gray-600 hover:bg-gray-50"
-                  >
-                    Cerrar
-                  </button>
-                  {licenseState.isActivated && (
-                    <button
-                      onClick={() => {
-                        deactivateLicense()
-                        setShowDeviceModal(false)
-                        window.location.reload()
-                      }}
-                      className="py-3 px-4 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600"
-                    >
-                      Desactivar
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
+            <DeviceModal
+              show={showDeviceModal}
+              deviceId={getDeviceId()}
+              licenseState={licenseState}
+              licenseStatusCheck={licenseStatusCheck}
+              onClose={() => setShowDeviceModal(false)}
+              onDeactivate={() => { deactivateLicense(); setShowDeviceModal(false); window.location.reload() }}
+            />
           )}
 
           {showInvAdjustModal && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
-                <button
-                  onClick={() => { setShowInvAdjustModal(false); setAdjustProduct(''); setAdjustQty(0); setAdjustReason(''); }}
-                  className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors font-bold text-lg"
-                >
-                  ✕
-                </button>
-                <div className="text-center mb-6">
-                  <div className="text-4xl mb-2">📦</div>
-                  <h2 className="text-2xl font-bold text-gray-800">Ajustar Inventario</h2>
-                  <p className="text-sm text-gray-500 mt-1">Ajusta tu inventario sin complicaciones</p>
-                </div>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Producto</label>
-                    <input
-                      type="text"
-                      value={adjustProduct}
-                      onChange={(e) => setAdjustProduct(e.target.value)}
-                      placeholder="Nombre del producto"
-                      className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Cantidad (+ o -)</label>
-                    <input
-                      type="number"
-                      value={adjustQty}
-                      onChange={(e) => setAdjustQty(Number(e.target.value))}
-                      placeholder="Ej: 10 o -5"
-                      className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Motivo</label>
-                    <select
-                      value={adjustReason}
-                      onChange={(e) => setAdjustReason(e.target.value)}
-                      className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Seleccionar...</option>
-                      <option value="ajuste">Ajuste de inventario</option>
-                      <option value="perdida">Pérdida / Merma</option>
-                      <option value="robo">Robo</option>
-                      <option value="entrada">Entrada manual</option>
-                      <option value="otro">Otro</option>
-                    </select>
-                  </div>
-                  
-                  <button
-                    onClick={() => {
-                      if (adjustProduct && adjustQty !== 0 && adjustReason) {
-                        adjustInventory(adjustProduct, adjustQty, adjustReason)
-                          .then(() => {
-                            showNotification('success', `Inventario ajustado: ${adjustProduct} (${adjustQty > 0 ? '+' : ''}${adjustQty})`)
-                            setShowInvAdjustModal(false)
-                            setAdjustProduct('')
-                            setAdjustQty(0)
-                            setAdjustReason('')
-                            if (showInventory) getStockByProduct().then(setInventory)
-                          })
-                          .catch((e) => showNotification('error', e.message))
-                      }
-                    }}
-                    disabled={!adjustProduct || adjustQty === 0 || !adjustReason}
-                    className="w-full py-3 px-4 bg-amber-500 text-white rounded-lg font-semibold hover:bg-amber-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                  >
-                    Guardar Ajuste
-                  </button>
-                </div>
-              </div>
-            </div>
+            <InvAdjustModal
+              show={showInvAdjustModal}
+              product={adjustProduct}
+              qty={adjustQty}
+              reason={adjustReason}
+              onProductChange={setAdjustProduct}
+              onQtyChange={setAdjustQty}
+              onReasonChange={setAdjustReason}
+              onSubmit={() => {
+                if (adjustProduct && adjustQty !== 0 && adjustReason) {
+                  adjustInventory(adjustProduct, adjustQty, adjustReason)
+                    .then(() => {
+                      showNotification('success', `Inventario ajustado: ${adjustProduct} (${adjustQty > 0 ? '+' : ''}${adjustQty})`)
+                      setShowInvAdjustModal(false)
+                      setAdjustProduct('')
+                      setAdjustQty(0)
+                      setAdjustReason('')
+                      if (showInventory) getStockByProduct().then(setInventory)
+                    })
+                    .catch((e) => showNotification('error', e.message))
+                }
+              }}
+              onClose={() => { setShowInvAdjustModal(false); setAdjustProduct(''); setAdjustQty(0); setAdjustReason('') }}
+            />
           )}
 
           {showNewBusinessModal && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
-                <button
-                  onClick={() => { setShowNewBusinessModal(false); setNewBusinessName(''); }}
-                  className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors font-bold text-lg"
-                >
-                  ✕
-                </button>
-                <div className="text-center mb-6">
-                  <div className="text-4xl mb-2">🏢</div>
-                  <h2 className="text-2xl font-bold text-gray-800">Nuevo Negocio</h2>
-                  <p className="text-sm text-gray-500 mt-1">Crea un nuevo negocio con su plantilla</p>
-                </div>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Nombre del negocio</label>
-                    <input
-                      type="text"
-                      value={newBusinessName}
-                      onChange={(e) => setNewBusinessName(e.target.value)}
-                      placeholder="Ej: Mi Restaurante"
-                      className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && newBusinessName) {
-                          createBusiness(newBusinessName, newBusinessType)
-                            .then(id => { setCurrentBusinessId(id); window.location.reload() })
-                            .catch(err => showNotification('error', err.message))
-                        }
-                      }}
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de negocio</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(Object.keys(businessTemplates) as BusinessType[]).map(tipo => {
-                        const tpl = businessTemplates[tipo]
-                        const isSelected = newBusinessType === tipo
-                        return (
-                          <button
-                            key={tipo}
-                            onClick={() => setNewBusinessType(tipo)}
-                            className={`p-3 rounded-lg border-2 text-left transition-all ${
-                              isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                            }`}
-                          >
-                            <span className="text-2xl">{tpl.emoji}</span>
-                            <p className="text-sm font-semibold mt-1">{tpl.label}</p>
-                            <p className="text-xs text-gray-500">Unidad: {tpl.unidad}</p>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={async () => {
-                      if (!newBusinessName) return
-                      try {
-                        const newId = await createBusiness(newBusinessName, newBusinessType)
-                        setCurrentBusinessId(newId)
-                        window.location.reload()
-                      } catch (e: any) {
-                        showNotification('error', `Error: ${e.message}`)
-                      }
-                    }}
-                    disabled={!newBusinessName}
-                    className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                  >
-                    Crear Negocio
-                  </button>
-                </div>
-              </div>
-            </div>
+            <NewBusinessModal
+              show={showNewBusinessModal}
+              newBusinessName={newBusinessName}
+              newBusinessType={newBusinessType}
+              onNameChange={setNewBusinessName}
+              onTypeChange={setNewBusinessType}
+              onCreate={async () => {
+                if (!newBusinessName) return
+                try {
+                  const newId = await createBusiness(newBusinessName, newBusinessType)
+                  setCurrentBusinessId(newId)
+                  window.location.reload()
+                } catch (e: any) {
+                  showNotification('error', `Error: ${e.message}`)
+                }
+              }}
+              onClose={() => { setShowNewBusinessModal(false); setNewBusinessName('') }}
+            />
           )}
 
           {licenseStatusCheck.isExpired && (
-            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
-                <div className="text-6xl mb-4">⚠️</div>
-                <h2 className="text-2xl font-bold text-red-600 mb-2">Licencia Expirada</h2>
-                <p className="text-gray-600 mb-6">Tu licencia ha expirado. Contacta soporte para renovar.</p>
-                
-                <div className="bg-gray-50 rounded-lg p-4 mb-6">
-                  <p className="text-sm text-gray-500">Device ID</p>
-                  <p className="font-mono text-sm font-bold">{getDeviceId()}</p>
-                </div>
-                
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      deactivateLicense()
-                      window.location.reload()
-                    }}
-                    className="py-3 px-4 border border-gray-300 rounded-lg font-semibold text-gray-600 hover:bg-gray-50"
-                  >
-                    Modo FREE
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowLicenseModal(true)
-                    }}
-                    className="flex-1 py-3 px-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-bold hover:from-green-600 hover:to-green-700"
-                  >
-                    💳 Pagar para renovar
-                  </button>
-                  <a
-                    href="https://wa.me/573138777115?text=Hola!%20Mi%20licencia%20expir%C3%B3%20y%20necesito%20renovarla.%20Device%20ID:%20{getDeviceId()}"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="py-3 px-4 bg-green-500 text-white rounded-lg font-bold hover:bg-green-600"
-                  >
-                    📱
-                  </a>
-                </div>
-              </div>
-            </div>
+            <LicenseExpiredModal
+              onFreeMode={() => { deactivateLicense(); window.location.reload() }}
+              onPay={() => setShowLicenseModal(true)}
+            />
           )}
 
           {showAddProduct && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={() => setShowAddProduct(false)}>
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-xl font-bold text-gray-800">📦 Agregar Producto</h2>
-                  <button onClick={() => setShowAddProduct(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del producto</label>
-                    <input
-                      type="text"
-                      value={newProductName}
-                      onChange={e => setNewProductName(e.target.value)}
-                      placeholder="Ej: Pollo Deshidratado"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      onKeyDown={e => e.key === 'Enter' && handleAddProduct()}
-                      autoFocus
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Precio de venta</label>
-                      <input
-                        type="number"
-                        value={newProductPrice}
-                        onChange={e => setNewProductPrice(e.target.value)}
-                        placeholder="$0"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        onKeyDown={e => e.key === 'Enter' && handleAddProduct()}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Costo</label>
-                      <input
-                        type="number"
-                        value={newProductCost}
-                        onChange={e => setNewProductCost(e.target.value)}
-                        placeholder="$0"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        onKeyDown={e => e.key === 'Enter' && handleAddProduct()}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Stock inicial (opcional)</label>
-                    <input
-                      type="number"
-                      value={newProductStock}
-                      onChange={e => setNewProductStock(e.target.value)}
-                      placeholder="0"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      onKeyDown={e => e.key === 'Enter' && handleAddProduct()}
-                    />
-                  </div>
-                  <div className="flex gap-3 pt-2">
-                    <button
-                      onClick={() => setShowAddProduct(false)}
-                      className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={handleAddProduct}
-                      className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
-                    >
-                      Guardar Producto
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <AddProductModal
+              show={showAddProduct}
+              newProductName={newProductName}
+              newProductPrice={newProductPrice}
+              newProductCost={newProductCost}
+              newProductStock={newProductStock}
+              onNameChange={setNewProductName}
+              onPriceChange={setNewProductPrice}
+              onCostChange={setNewProductCost}
+              onStockChange={setNewProductStock}
+              onSave={handleAddProduct}
+              onClose={() => setShowAddProduct(false)}
+            />
           )}
 
           {showEditProduct && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={() => setShowEditProduct(false)}>
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-xl font-bold text-gray-800">✏️ Editar Producto</h2>
-                  <button onClick={() => setShowEditProduct(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del producto</label>
-                    <input
-                      type="text"
-                      value={editProductName}
-                      onChange={e => setEditProductName(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      onKeyDown={e => e.key === 'Enter' && handleUpdateProduct()}
-                      autoFocus
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Precio de venta</label>
-                      <input
-                        type="number"
-                        value={editProductPrice}
-                        onChange={e => setEditProductPrice(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        onKeyDown={e => e.key === 'Enter' && handleUpdateProduct()}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Costo</label>
-                      <input
-                        type="number"
-                        value={editProductCost}
-                        onChange={e => setEditProductCost(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        onKeyDown={e => e.key === 'Enter' && handleUpdateProduct()}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Stock actual</label>
-                    <input
-                      type="number"
-                      value={editProductStock}
-                      onChange={e => setEditProductStock(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      onKeyDown={e => e.key === 'Enter' && handleUpdateProduct()}
-                    />
-                  </div>
-                  <div className="flex gap-3 pt-2">
-                    <button
-                      onClick={() => setShowEditProduct(false)}
-                      className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={handleUpdateProduct}
-                      className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
-                    >
-                      Guardar Cambios
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <EditProductModal
+              show={showEditProduct}
+              editProductName={editProductName}
+              editProductPrice={editProductPrice}
+              editProductCost={editProductCost}
+              editProductStock={editProductStock}
+              onNameChange={setEditProductName}
+              onPriceChange={setEditProductPrice}
+              onCostChange={setEditProductCost}
+              onStockChange={setEditProductStock}
+              onSave={handleUpdateProduct}
+              onClose={() => setShowEditProduct(false)}
+            />
           )}
 
           {showQuickPurchase && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={() => setShowQuickPurchase(false)}>
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-xl font-bold text-gray-800">🛒 + Compra: {quickPurchaseProduct}</h2>
-                  <button onClick={() => setShowQuickPurchase(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
-                </div>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
-                      <input
-                        type="number"
-                        value={quickPurchaseQty}
-                        onChange={e => setQuickPurchaseQty(e.target.value)}
-                        placeholder="0"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                        onKeyDown={e => e.key === 'Enter' && handleQuickPurchase()}
-                        autoFocus
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Costo unitario</label>
-                      <input
-                        type="number"
-                        value={quickPurchaseCost}
-                        onChange={e => setQuickPurchaseCost(e.target.value)}
-                        placeholder="$0"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                        onKeyDown={e => e.key === 'Enter' && handleQuickPurchase()}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex gap-3 pt-2">
-                    <button
-                      onClick={() => setShowQuickPurchase(false)}
-                      className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={handleQuickPurchase}
-                      className="flex-1 py-3 px-4 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700"
-                    >
-                      Registrar Compra
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <QuickPurchaseModal
+              show={showQuickPurchase}
+              quickPurchaseProduct={quickPurchaseProduct}
+              quickPurchaseQty={quickPurchaseQty}
+              quickPurchaseCost={quickPurchaseCost}
+              onQtyChange={setQuickPurchaseQty}
+              onCostChange={setQuickPurchaseCost}
+              onSave={handleQuickPurchase}
+              onClose={() => setShowQuickPurchase(false)}
+            />
           )}
 
           {showQuickAdjust && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={() => setShowQuickAdjust(false)}>
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-xl font-bold text-gray-800">🔧 Ajustar: {quickAdjustProduct}</h2>
-                  <button onClick={() => setShowQuickAdjust(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
-                </div>
-                <div className="space-y-4">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setQuickAdjustType('+')}
-                      className={`flex-1 py-2 rounded-lg font-semibold ${quickAdjustType === '+' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'}`}
-                    >
-                      + Sumar
-                    </button>
-                    <button
-                      onClick={() => setQuickAdjustType('-')}
-                      className={`flex-1 py-2 rounded-lg font-semibold ${quickAdjustType === '-' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600'}`}
-                    >
-                      - Restar
-                    </button>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
-                    <input
-                      type="number"
-                      value={quickAdjustQty}
-                      onChange={e => setQuickAdjustQty(e.target.value)}
-                      placeholder="0"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                      onKeyDown={e => e.key === 'Enter' && handleQuickAdjust()}
-                      autoFocus
-                    />
-                  </div>
-                  <div className="flex gap-3 pt-2">
-                    <button
-                      onClick={() => setShowQuickAdjust(false)}
-                      className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={handleQuickAdjust}
-                      className="flex-1 py-3 px-4 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700"
-                    >
-                      Ajustar Stock
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <QuickAdjustModal
+              show={showQuickAdjust}
+              quickAdjustProduct={quickAdjustProduct}
+              quickAdjustQty={quickAdjustQty}
+              quickAdjustType={quickAdjustType}
+              onQtyChange={setQuickAdjustQty}
+              onTypeChange={setQuickAdjustType}
+              onSave={handleQuickAdjust}
+              onClose={() => setShowQuickAdjust(false)}
+            />
           )}
 
           {showWarehouseModal && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-                <div className="p-6">
-                  <h2 className="text-xl font-bold text-gray-800 mb-4">📦 Nueva Bodega</h2>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Nombre *</label>
-                      <input
-                        type="text"
-                        value={newWarehouseName}
-                        onChange={(e) => setNewWarehouseName(e.target.value)}
-                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Ej: Principal, Sucursal Norte..."
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Dirección (opcional)</label>
-                      <input
-                        type="text"
-                        value={newWarehouseAddress}
-                        onChange={(e) => setNewWarehouseAddress(e.target.value)}
-                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Calle 123 #45-67"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="px-6 pb-6 flex gap-3">
-                  <button
-                    onClick={() => setShowWarehouseModal(false)}
-                    className="flex-1 py-3 px-4 border border-gray-300 rounded-lg font-semibold text-gray-600 hover:bg-gray-50"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={handleCreateWarehouse}
-                    className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700"
-                  >
-                    Crear Bodega
-                  </button>
-                </div>
-              </div>
-            </div>
+            <NewWarehouseModal
+              show={showWarehouseModal}
+              newWarehouseName={newWarehouseName}
+              newWarehouseAddress={newWarehouseAddress}
+              onNameChange={setNewWarehouseName}
+              onAddressChange={setNewWarehouseAddress}
+              onCreate={handleCreateWarehouse}
+              onClose={() => setShowWarehouseModal(false)}
+            />
           )}
 
           {showTransferModal && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-                <div className="p-6">
-                  <h2 className="text-xl font-bold text-gray-800 mb-4">🔄 Transferir Stock</h2>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Desde</label>
-                      <select
-                        value={transferFrom}
-                        onChange={(e) => setTransferFrom(Number(e.target.value) || '')}
-                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Seleccionar bodega...</option>
-                        {warehouses.map(wh => (
-                          <option key={wh.id} value={wh.id}>{wh.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Hacia</label>
-                      <select
-                        value={transferTo}
-                        onChange={(e) => setTransferTo(Number(e.target.value) || '')}
-                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Seleccionar bodega...</option>
-                        {warehouses.map(wh => (
-                          <option key={wh.id} value={wh.id}>{wh.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Producto</label>
-                      <input
-                        type="text"
-                        value={transferProduct}
-                        onChange={(e) => setTransferProduct(e.target.value)}
-                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Nombre del producto"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Cantidad</label>
-                      <input
-                        type="number"
-                        value={transferQty}
-                        onChange={(e) => setTransferQty(e.target.value)}
-                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="0"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="px-6 pb-6 flex gap-3">
-                  <button
-                    onClick={() => setShowTransferModal(false)}
-                    className="flex-1 py-3 px-4 border border-gray-300 rounded-lg font-semibold text-gray-600 hover:bg-gray-50"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={handleTransferStock}
-                    className="flex-1 py-3 px-4 bg-orange-600 text-white rounded-lg font-bold hover:bg-orange-700"
-                  >
-                    Transferir
-                  </button>
-                </div>
-              </div>
-            </div>
+            <TransferStockModal
+              show={showTransferModal}
+              transferFrom={transferFrom}
+              transferTo={transferTo}
+              transferProduct={transferProduct}
+              transferQty={transferQty}
+              warehouses={warehouses}
+              onFromChange={setTransferFrom}
+              onToChange={setTransferTo}
+              onProductChange={setTransferProduct}
+              onQtyChange={setTransferQty}
+              onTransfer={handleTransferStock}
+              onClose={() => setShowTransferModal(false)}
+            />
           )}
 
           {showOnboarding && (
-            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100] p-4">
-              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
-                <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-6 text-center">
-                  <div className="text-5xl mb-3">
-                    {onboardingStep === 1 ? '🦁' : onboardingStep === 2 ? '🏪' : '📦'}
-                  </div>
-                  <h2 className="text-2xl font-bold text-white">
-                    {onboardingStep === 1 ? 'Bienvenido a LionCore' : onboardingStep === 2 ? 'Tu Negocio' : 'Tu Primer Producto'}
-                  </h2>
-                </div>
-
-                <div className="p-6">
-                  <div className="flex justify-center gap-1 mb-6">
-                    {[1,2,3].map(s => (
-                      <div key={s} className={`h-2 w-8 rounded-full ${
-                        s <= onboardingStep ? 'bg-blue-600' : 'bg-gray-200'
-                      }`} />
-                    ))}
-                  </div>
-
-                  {onboardingStep === 1 && (
-                    <div className="text-center">
-                      <p className="text-gray-600 mb-4">
-                        El POS inteligente que funciona <strong>sin internet</strong> y se adapta a tu negocio.
-                      </p>
-                      <ul className="text-left space-y-2 text-sm text-gray-600">
-                        <li>✅ Vende productos y servicios</li>
-                        <li>📦 Controla tu inventario</li>
-                        <li>🔧 Servicios técnicos con CRM</li>
-                        <li>📊 Reportes de ganancias</li>
-                        <li>📱 Funciona en redes WiFi locales</li>
-                      </ul>
-                    </div>
-                  )}
-
-                  {onboardingStep === 2 && (
-                    <div className="text-center">
-                      <p className="text-gray-600 mb-4">
-                        Elige el tipo de negocio que mejor se adapte a ti:
-                      </p>
-                      <div className="grid grid-cols-2 gap-2">
-                        {(Object.keys(businessTemplates) as BusinessType[]).map(tipo => {
-                          const tpl = businessTemplates[tipo]
-                          return (
-                            <button
-                              key={tipo}
-                              onClick={() => {
-                                if (newBusinessName) {
-                                  createBusiness(newBusinessName, tipo).then(id => {
-                                    setCurrentBusinessId(id)
-                                    window.location.reload()
-                                  })
-                                }
-                              }}
-                              className="p-3 rounded-xl border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all text-center"
-                            >
-                              <span className="text-3xl">{tpl.emoji}</span>
-                              <p className="text-sm font-semibold mt-1">{tpl.label}</p>
-                            </button>
-                          )
-                        })}
-                      </div>
-                      <div className="mt-4">
-                        <input
-                          type="text"
-                          placeholder="Nombre de tu negocio"
-                          value={newBusinessName}
-                          onChange={e => setNewBusinessName(e.target.value)}
-                          className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {onboardingStep === 3 && (
-                    <div className="text-center">
-                      <p className="text-gray-600 mb-4">
-                        Agrega tu primer producto para empezar a vender:
-                      </p>
-                      <div className="space-y-3">
-                        <input
-                          type="text"
-                          placeholder="Nombre del producto"
-                          value={newProductName}
-                          onChange={e => setNewProductName(e.target.value)}
-                          className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                        <input
-                          type="number"
-                          placeholder="Precio de venta"
-                          value={newProductPrice}
-                          onChange={e => setNewProductPrice(e.target.value)}
-                          className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="px-6 pb-6 flex gap-3">
-                  <button
-                    onClick={() => {
-                      setShowOnboarding(false)
-                      localStorage.setItem('lioncore_onboarding_done', 'true')
-                    }}
-                    className="flex-1 py-3 px-4 border border-gray-300 rounded-lg font-semibold text-gray-600 hover:bg-gray-50"
-                  >
-                    Saltar
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (onboardingStep === 3) {
-                        if (newProductName && newProductPrice) {
-                          await db.products.add({
-                            businessId: currentBusinessId,
-                            name: newProductName,
-                            price: Number(newProductPrice),
-                            createdAt: new Date(),
-                          })
-                          showNotification('success', 'Producto creado!')
-                        }
-                        setShowOnboarding(false)
-                        localStorage.setItem('lioncore_onboarding_done', 'true')
-                      } else {
-                        setOnboardingStep(s => s + 1)
-                      }
-                    }}
-                    className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700"
-                  >
-                    {onboardingStep === 3 ? 'Comenzar' : 'Siguiente'}
-                  </button>
-                </div>
-              </div>
-            </div>
+            <OnboardingModal
+              show={showOnboarding}
+              currentBusinessId={currentBusinessId}
+              newBusinessName={newBusinessName}
+              newProductName={newProductName}
+              newProductPrice={newProductPrice}
+              onBusinessNameChange={setNewBusinessName}
+              onProductNameChange={setNewProductName}
+              onProductPriceChange={setNewProductPrice}
+              onCreateBusiness={(name, tipo) => {
+                createBusiness(name, tipo).then(id => {
+                  setCurrentBusinessId(id)
+                  window.location.reload()
+                })
+              }}
+              onComplete={() => {
+                setShowOnboarding(false)
+                localStorage.setItem('lioncore_onboarding_done', 'true')
+              }}
+              showNotification={showNotification}
+            />
           )}
 
           {showPostSaleTrigger && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={() => setShowPostSaleTrigger(false)}>
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center" onClick={e => e.stopPropagation()}>
-                <div className="text-4xl mb-3">✅</div>
-                <h3 className="text-lg font-bold text-gray-800 mb-2">Venta registrada</h3>
-                <p className="text-gray-600 text-sm mb-4">¿Sabes cuanto ganaste realmente?</p>
-                {!licenseState.isActivated ? (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-3">Activa PRO para ver tu ganancia neta</p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => { setShowPostSaleTrigger(false); setShowLicenseModal(true) }}
-                        className="flex-1 py-2 px-4 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 text-sm"
-                      >
-                        Activar PRO
-                      </button>
-                      <button
-                        onClick={() => setShowPostSaleTrigger(false)}
-                        className="py-2 px-4 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50"
-                      >
-                        Cerrar
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setShowPostSaleTrigger(false)}
-                    className="py-2 px-6 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
-                  >
-                    Ver en Resumen
-                  </button>
-                )}
-              </div>
-            </div>
+            <PostSaleTriggerModal
+              show={showPostSaleTrigger}
+              isActivated={licenseState.isActivated}
+              onActivate={() => { setShowPostSaleTrigger(false); setShowLicenseModal(true) }}
+              onViewSummary={() => setShowPostSaleTrigger(false)}
+              onClose={() => setShowPostSaleTrigger(false)}
+            />
           )}
 
           {!showConfig && !showInventory && !showAddProduct && (
