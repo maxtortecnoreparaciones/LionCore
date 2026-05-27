@@ -53,7 +53,7 @@ export default function EditProductModal({
   return (
     <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[90] p-0 sm:p-4" onClick={onClose}>
       <div
-        className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md max-h-[85vh] flex flex-col"
+        className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md max-h-[85vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-5 sm:p-6 pb-4 border-b border-gray-100 shrink-0">
@@ -61,7 +61,7 @@ export default function EditProductModal({
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none w-8 h-8 flex items-center justify-center">×</button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 sm:p-6 pt-4 pb-2">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6 pt-4 pb-2">
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del producto</label>
