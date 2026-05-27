@@ -430,11 +430,25 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     }
 
     const product = await db.products.where({ businessId: currentBusinessId, name: producto.trim() }).first()
+    const defaultUnit = getDefaultUnit(currentBusinessType)
+    if (!product) {
+      const code = await generateNextProductCode(currentBusinessId, currentBusinessType)
+      await db.products.add({
+        businessId: currentBusinessId,
+        code,
+        name: producto.trim(),
+        price: precioNum,
+        stock: 0,
+        unidad: defaultUnit,
+        pricingMode: 'UNIT',
+        createdAt: new Date(),
+      })
+    }
     const newItem: Item = {
       id: Date.now(),
       producto: producto.trim(),
       code: product?.code,
-      unit: product?.unidad,
+      unit: product?.unidad || defaultUnit,
       cantidad,
       precio: precioNum,
     }
@@ -520,6 +534,24 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
       const products = await db.products.where('businessId').equals(currentBusinessId).toArray()
       const productMap = new Map<string, { id?: number; cost?: number; unit?: string; code?: string }>()
       products.forEach(p => productMap.set(p.name.toLowerCase(), { id: p.id, cost: p.cost, unit: p.unidad, code: p.code }))
+
+      for (const item of items) {
+        if (!productMap.has(item.producto.toLowerCase())) {
+          const code = await generateNextProductCode(currentBusinessId, currentBusinessType)
+          const unit = getDefaultUnit(currentBusinessType)
+          const newId = await db.products.add({
+            businessId: currentBusinessId,
+            code,
+            name: item.producto,
+            price: item.precio,
+            stock: 0,
+            unidad: unit,
+            pricingMode: 'UNIT',
+            createdAt: new Date(),
+          })
+          productMap.set(item.producto.toLowerCase(), { id: newId, unit, code })
+        }
+      }
 
       const transactionItems = items.map(item => {
         const isProduction = mode === 'produccion'
