@@ -32,7 +32,7 @@ const CocinaView: React.FC<CocinaViewProps> = ({ mesas, onCobrar, onUpdateItemSt
                 {mesa.orderItems.map((item, idx) => (
                   <div key={idx} className="bg-white rounded-lg p-2 border border-gray-100">
                     <div className="flex justify-between items-center text-sm">
-                      <span className="font-medium">{item.name} <span className="text-gray-400">x{item.quantity}</span></span>
+                      <span className="font-medium">{item.code ? <span className="text-[10px] font-mono text-gray-400 mr-1">[{item.code}]</span> : ''}{item.name} <span className="text-gray-400">x{item.quantity}</span></span>
                       <span className="text-gray-600">{formatCOP(item.subtotal)}</span>
                     </div>
                     <div className="flex items-center gap-1.5 mt-1.5">

@@ -9,12 +9,16 @@ interface RawMaterialItem {
   id?: number
   name: string
   stock?: number
+  code?: string
+  unidad?: string
 }
 
 interface FinalProductItem {
   id?: number
   name: string
   stock?: number
+  code?: string
+  unidad?: string
 }
 
 interface ProductionRecord {
@@ -33,6 +37,7 @@ interface ProductionRecord {
 interface ProductionViewProps {
   show: boolean
   productionDashboard: ProductionDashboardData | null
+  defaultUnit: string
   rawMaterial: string
   onRawMaterialChange: (v: string) => void
   rawMaterials: RawMaterialItem[]
@@ -53,6 +58,7 @@ interface ProductionViewProps {
 export default function ProductionView({
   show,
   productionDashboard,
+  defaultUnit,
   rawMaterial,
   onRawMaterialChange,
   rawMaterials,
@@ -82,11 +88,11 @@ export default function ProductionView({
         <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="bg-green-50 rounded-lg p-3 text-center">
             <p className="text-xs text-green-600 font-semibold">Producido Total</p>
-            <p className="text-lg font-bold text-green-700">{productionDashboard.totalProduced} kg</p>
+            <p className="text-lg font-bold text-green-700">{productionDashboard.totalProduced} {defaultUnit}</p>
           </div>
           <div className="bg-red-50 rounded-lg p-3 text-center">
             <p className="text-xs text-red-600 font-semibold">Merma Total</p>
-            <p className="text-lg font-bold text-red-700">{productionDashboard.totalWaste} kg</p>
+            <p className="text-lg font-bold text-red-700">{productionDashboard.totalWaste} {defaultUnit}</p>
           </div>
           <div className="bg-blue-50 rounded-lg p-3 text-center">
             <p className="text-xs text-blue-600 font-semibold">Rendimiento Prom.</p>
@@ -111,7 +117,7 @@ export default function ProductionView({
             >
               <option value="">Seleccionar...</option>
               {rawMaterials.map(p => (
-                <option key={p.id} value={p.name}>{p.name} (Stock: {p.stock || 0} kg)</option>
+                <option key={p.id} value={p.name}>{p.code ? `[${p.code}] ` : ''}{p.name} (Stock: {p.stock || 0} {p.unidad || defaultUnit})</option>
               ))}
             </select>
           </div>
@@ -124,12 +130,12 @@ export default function ProductionView({
             >
               <option value="">Seleccionar...</option>
               {finalProducts.map(p => (
-                <option key={p.id} value={p.name}>{p.name} (Stock: {p.stock || 0} kg)</option>
+                <option key={p.id} value={p.name}>{p.code ? `[${p.code}] ` : ''}{p.name} (Stock: {p.stock || 0} {p.unidad || defaultUnit})</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad Materia Prima (kg)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad Materia Prima ({defaultUnit})</label>
             <input
               type="number"
               value={rawQty}
@@ -139,7 +145,7 @@ export default function ProductionView({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Producto Final Obtenido (kg)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Producto Final Obtenido ({defaultUnit})</label>
             <input
               type="number"
               value={finalQty}
@@ -170,7 +176,7 @@ export default function ProductionView({
             </div>
             <div className="flex justify-between text-sm mt-1">
               <span>Merma:</span>
-              <span className="text-red-500 font-semibold">{(Number(rawQty) - Number(finalQty)).toFixed(1)} kg</span>
+              <span className="text-red-500 font-semibold">{(Number(rawQty) - Number(finalQty)).toFixed(1)} {defaultUnit}</span>
             </div>
             {calcRendimiento < 30 && (
               <p className="text-xs text-red-500 mt-2">⚠️ Estas perdiendo producto y no lo sabes</p>
@@ -205,11 +211,11 @@ export default function ProductionView({
                   </span>
                 </div>
                 <div className="flex justify-between text-xs text-gray-500 mt-2">
-                  <span>{prod.rawMaterialQty} kg → {prod.finalProductQty} kg</span>
-                  <span>Merma: {prod.wasteQty.toFixed(1)} kg</span>
+                  <span>{prod.rawMaterialQty} {defaultUnit} → {prod.finalProductQty} {defaultUnit}</span>
+                  <span>Merma: {prod.wasteQty.toFixed(1)} {defaultUnit}</span>
                 </div>
                 <p className="text-xs text-gray-400 mt-1">
-                  {new Date(prod.date).toLocaleDateString()} - Costo: ${prod.costoUnitario.toFixed(0)}/kg
+                  {new Date(prod.date).toLocaleDateString()} - Costo: ${prod.costoUnitario.toFixed(0)}/{defaultUnit}
                 </p>
               </div>
             ))}

@@ -11,6 +11,8 @@ interface SummaryViewProps {
   summary: FinancialSummary | null
   netProfit: NetProfitSummary | null
   loadingNetProfit: boolean
+  todayWow: { ventas: number; ganancia: number } | null
+  loadingWow: boolean
 }
 
 export default function SummaryView({
@@ -21,11 +23,22 @@ export default function SummaryView({
   summary,
   netProfit,
   loadingNetProfit,
+  todayWow,
+  loadingWow,
 }: SummaryViewProps) {
   if (!show) return null
 
   return (
     <div className="bg-white rounded-xl shadow-md p-4">
+      {todayWow && (
+        <div className="bg-gradient-to-r from-emerald-50 to-green-50 rounded-lg p-4 mb-4 border border-emerald-200">
+          <h3 className="text-sm font-bold text-emerald-800 mb-2">Hoy</h3>
+          <div className="flex gap-4 text-sm">
+            <span>Ventas <strong className="text-emerald-600">{loadingWow ? '...' : formatCOP(todayWow.ventas)}</strong></span>
+            <span>Ganancia <strong className={todayWow.ganancia >= 0 ? 'text-emerald-600' : 'text-red-600'}>{loadingWow ? '...' : formatCOP(todayWow.ganancia)}</strong></span>
+          </div>
+        </div>
+      )}
       <div className="flex gap-2 mb-4">
         {(['diario', 'semanal', 'mensual'] as const).map((p) => (
           <button

@@ -7,6 +7,8 @@ type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
 interface Item {
   id: number
   producto: string
+  code?: string
+  unit?: string
   cantidad: number
   precio: number
 }
@@ -50,12 +52,13 @@ export default function TransactionForm({
   mode, onModeChange, producto, onProductoChange, cantidad, onCantidadChange, precio, onPrecioChange,
   editingId, items, total, loading, customerName, onCustomerNameChange, customerPhone, onCustomerPhoneChange,
   showProductionDetails, onToggleProductionDetails, productionMeta, onProductionMetaChange,
-  currentTpl, licenseState, currentBusinessId, availableModes,
+  licenseState, currentBusinessId, availableModes,
   onAgregar, onActualizar, onCancelarEdicion, onEditar, onEliminar,
   onGuardar, onImprimir, onWhatsApp,
 }: TransactionFormProps) {
   const [showProductDropdown, setShowProductDropdown] = useState(false)
-  const [productSuggestions, setProductSuggestions] = useState<{ name: string; stock: number; lastPrice?: number }[]>([])
+  const [productSuggestions, setProductSuggestions] = useState<{ name: string; code?: string; qr?: string; stock: number; lastPrice?: number; unit?: string; pricingMode?: string }[]>([])
+  const [selectedPricingMode, setSelectedPricingMode] = useState<'UNIT' | 'WEIGHT'>('UNIT')
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -65,12 +68,13 @@ export default function TransactionForm({
 
   const handleProductoChange = async (value: string) => {
     onProductoChange(value)
-    if (mode === 'venta' && value.length > 1) {
+    if (value.length > 1) {
       const stockData = await getStockByProduct()
+      const q = value.toLowerCase()
       const filtered = stockData.filter(p =>
-        p.name.toLowerCase().includes(value.toLowerCase()) && p.quantity > 0
+        p.name.toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q) || (p.qr || '').toLowerCase().includes(q)
       )
-      setProductSuggestions(filtered.map(p => ({ name: p.name, stock: p.quantity, lastPrice: p.lastPrice })))
+      setProductSuggestions(filtered.map(p => ({ name: p.name, code: p.code, qr: p.qr, stock: p.quantity, lastPrice: p.lastPrice, unit: p.unit, pricingMode: p.pricingMode })))
       setShowProductDropdown(filtered.length > 0)
     } else {
       setShowProductDropdown(false)
@@ -78,26 +82,29 @@ export default function TransactionForm({
   }
 
   const handleProductFocus = async () => {
-    if (mode === 'venta' && producto.length > 1) {
+    if (producto.length > 1) {
       const stockData = await getStockByProduct()
+      const q = producto.toLowerCase()
       const filtered = stockData.filter(p =>
-        p.name.toLowerCase().includes(producto.toLowerCase()) && p.quantity > 0
+        p.name.toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q) || (p.qr || '').toLowerCase().includes(q)
       )
-      setProductSuggestions(filtered.map(p => ({ name: p.name, stock: p.quantity, lastPrice: p.lastPrice })))
+      setProductSuggestions(filtered.map(p => ({ name: p.name, code: p.code, qr: p.qr, stock: p.quantity, lastPrice: p.lastPrice, unit: p.unit, pricingMode: p.pricingMode })))
       setShowProductDropdown(filtered.length > 0)
     }
   }
 
-  const handleSelectSuggestion = (p: { name: string; stock: number; lastPrice?: number }) => {
+  const handleSelectSuggestion = (p: { name: string; code?: string; qr?: string; stock: number; lastPrice?: number; unit?: string; pricingMode?: string }) => {
     onProductoChange(p.name)
-    if (p.lastPrice) onPrecioChange(String(p.lastPrice))
+    if (p.lastPrice !== undefined) onPrecioChange(String(p.lastPrice))
+    setSelectedPricingMode(p.pricingMode === 'WEIGHT' ? 'WEIGHT' : 'UNIT')
     setShowProductDropdown(false)
   }
 
+  const itemTotal = cantidad * Number(precio || 0)
+  const isWeightMode = selectedPricingMode === 'WEIGHT' && !editingId
+
   return (
     <>
-      <p className="text-center text-sm text-gray-500">Negocio ID: {currentBusinessId}</p>
-
       {!licenseState.isActivated && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
           <p className="text-sm text-yellow-800 font-semibold">🔒 Modo FREE - Solo Ventas disponibles</p>
@@ -115,7 +122,7 @@ export default function TransactionForm({
 
       <div className="bg-white rounded-xl shadow-md p-4">
         <div className="flex gap-2">
-          {availableModes.map((m) => (
+          {availableModes.filter(m => m !== 'compra').map((m) => (
             <button
               key={m}
               onClick={() => onModeChange(m)}
@@ -133,10 +140,10 @@ export default function TransactionForm({
 
       <div className="bg-white rounded-xl shadow-md p-4">
         <div className="flex gap-2">
-          <div className="relative flex-2 flex-1">
+          <div className="relative flex-1">
             <input
               type="text"
-              placeholder={editingId ? 'Editando producto...' : mode === 'venta' ? 'Buscar producto...' : 'Producto'}
+              placeholder={editingId ? 'Editando producto...' : 'nombre / código / QR...'}
               value={producto}
               onChange={(e) => handleProductoChange(e.target.value)}
               onFocus={handleProductFocus}
@@ -154,15 +161,18 @@ export default function TransactionForm({
                     onClick={() => handleSelectSuggestion(p)}
                     className="w-full px-4 py-3 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
                   >
-                    <div className="flex justify-between items-center">
-                      <span className="font-medium text-gray-800">{p.name}</span>
-                      <div className="text-right">
-                        <span className={`text-sm font-semibold ${p.stock > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                          Stock: {p.stock}
+                    <div className="flex items-center gap-2">
+                      {p.code && <span className="text-[10px] font-mono bg-blue-50 text-blue-600 rounded px-1 font-semibold">{p.code}</span>}
+                      <span className="font-medium text-gray-800 text-sm flex-1 truncate">{p.name}</span>
+                      <div className="text-right flex items-center gap-2 shrink-0">
+                        {p.unit && <span className="text-[10px] text-gray-400">{p.unit}</span>}
+                        {p.pricingMode === 'WEIGHT' && <span className="text-[9px] bg-amber-100 text-amber-700 rounded px-1 font-semibold">kg</span>}
+                        <span className={`text-xs font-semibold ${p.stock > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                          {p.stock}
                         </span>
                         {p.lastPrice && (
-                          <span className="ml-3 text-sm text-blue-600">
-                            Anterior: {formatCOP(p.lastPrice)}
+                          <span className="text-xs text-blue-600 font-medium">
+                            {formatCOP(p.lastPrice)}
                           </span>
                         )}
                       </div>
@@ -173,29 +183,41 @@ export default function TransactionForm({
             )}
           </div>
           {mode !== 'produccion' && (
+            <div className="relative">
+              <input
+                type="number"
+                step="any"
+                placeholder="Cantidad"
+                value={cantidad}
+                onChange={(e) => onCantidadChange(Math.max(0, Number(e.target.value.replace(',', '.')) || 0))}
+                min={0}
+                onKeyPress={handleKeyPress}
+                className={`w-20 py-3 px-3 text-center border rounded-lg focus:outline-none focus:ring-2 ${
+                  editingId ? 'border-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
+                } focus:border-transparent`}
+              />
+              {isWeightMode && <span className="absolute -top-2 -right-2 text-[9px] bg-blue-100 text-blue-600 rounded-full px-1 font-bold">kg</span>}
+            </div>
+          )}
+          <div className="relative">
             <input
               type="number"
-              placeholder={`Cantidad (${currentTpl.unidad})`}
-              value={cantidad}
-              onChange={(e) => onCantidadChange(Math.max(1, Number(e.target.value)))}
-              min={1}
+              placeholder={mode === 'produccion' ? 'Costo materia prima' : 'Precio'}
+              value={precio}
+              onChange={(e) => onPrecioChange(e.target.value.replace(',', '.'))}
               onKeyPress={handleKeyPress}
-              className={`w-20 py-3 px-3 text-center border rounded-lg focus:outline-none focus:ring-2 ${
+              min={0}
+              className={`w-28 py-3 px-3 text-right border rounded-lg focus:outline-none focus:ring-2 ${
                 editingId ? 'border-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
               } focus:border-transparent`}
             />
+            {isWeightMode && <span className="absolute -top-2 -right-2 text-[9px] bg-amber-100 text-amber-700 rounded-full px-1 font-bold">$/kg</span>}
+          </div>
+          {isWeightMode && (
+            <div className="flex items-center gap-1 text-xs text-gray-500 shrink-0">
+              <span className="whitespace-nowrap">→ <strong className="text-blue-600">{formatCOP(itemTotal)}</strong></span>
+            </div>
           )}
-          <input
-            type="number"
-            placeholder={mode === 'produccion' ? 'Costo materia prima' : 'Precio'}
-            value={precio}
-            onChange={(e) => onPrecioChange(e.target.value)}
-            onKeyPress={handleKeyPress}
-            min={0}
-            className={`w-28 py-3 px-3 text-right border rounded-lg focus:outline-none focus:ring-2 ${
-              editingId ? 'border-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
-            } focus:border-transparent`}
-          />
           <button
             onClick={editingId ? onActualizar : onAgregar}
             className={`py-3 px-6 font-semibold rounded-lg transition-colors duration-200 ${
@@ -299,11 +321,11 @@ export default function TransactionForm({
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr className="text-left text-sm text-gray-500 uppercase">
-              <th className="py-3 px-4">Producto</th>
-              <th className="py-3 px-2 text-center w-20">Cant.</th>
-              <th className="py-3 px-2 text-right w-28">Precio</th>
-              <th className="py-3 px-2 text-right w-32">Subtotal</th>
-              <th className="py-3 px-2 text-center w-24">Acciones</th>
+              <th className="py-2 px-3 text-xs">Producto</th>
+              <th className="py-2 px-2 text-center w-16 text-xs">Cant.</th>
+              <th className="py-2 px-2 text-right w-24 text-xs">Precio</th>
+              <th className="py-2 px-2 text-right w-28 text-xs">Subtotal</th>
+              <th className="py-2 px-2 text-center w-20 text-xs">Acción</th>
             </tr>
           </thead>
           <tbody>
@@ -321,27 +343,35 @@ export default function TransactionForm({
                     editingId === item.id ? 'bg-yellow-100' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
                   }`}
                 >
-                  <td className="py-3 px-4 font-medium text-gray-800">{item.producto}</td>
-                  <td className="py-3 px-2 text-center text-gray-600">x{item.cantidad}</td>
-                  <td className="py-3 px-2 text-right text-gray-600">{formatCOP(item.precio)}</td>
-                  <td className="py-3 px-2 text-right font-semibold text-gray-800">
+                  <td className="py-2 px-3">
+                    <div className="flex items-center gap-1 mb-0.5">
+                      {item.code && <span className="text-[10px] font-mono bg-gray-100 text-gray-500 rounded px-1 leading-tight">{item.code}</span>}
+                      <span className="text-xs font-medium text-gray-800 truncate">{item.producto}</span>
+                    </div>
+                    {item.unit && <span className="text-[10px] text-gray-400 ml-1">{item.unit}</span>}
+                  </td>
+                  <td className="py-2 px-2 text-center text-gray-600 text-sm">x{item.cantidad}</td>
+                  <td className="py-2 px-2 text-right text-gray-600 text-sm">{formatCOP(item.precio)}</td>
+                  <td className="py-2 px-2 text-right font-semibold text-gray-800 text-sm">
                     {formatCOP(item.cantidad * item.precio)}
                   </td>
-                  <td className="py-3 px-2 text-center flex gap-1">
-                    <button
-                      onClick={() => onEditar(item)}
-                      className="text-blue-500 hover:text-blue-700 transition-colors p-1"
-                      title="Editar"
-                    >
-                      ✏️
-                    </button>
-                    <button
-                      onClick={() => onEliminar(item.id)}
-                      className="text-red-500 hover:text-red-700 transition-colors p-1"
-                      title="Eliminar"
-                    >
-                      🗑
-                    </button>
+                  <td className="py-2 px-2 text-center">
+                    <div className="flex gap-1 justify-center">
+                      <button
+                        onClick={() => onEditar(item)}
+                        className="text-blue-500 hover:text-blue-700 transition-colors p-1"
+                        title="Editar"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        onClick={() => onEliminar(item.id)}
+                        className="text-red-500 hover:text-red-700 transition-colors p-1"
+                        title="Eliminar"
+                      >
+                        🗑
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -421,6 +451,7 @@ export default function TransactionForm({
           {loading ? 'Guardando...' : 'Guardar transacción'}
         </button>
       </div>
+      <p className="text-center text-xs text-gray-400 mt-3">Negocio ID: {currentBusinessId}</p>
     </>
   )
 }

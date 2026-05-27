@@ -174,7 +174,7 @@ export function ConfigView(props: ConfigViewProps) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Costo mano obra (por unidad)</label>
+              <label className="block text-xs text-gray-500 mb-1">Costo mano obra (por {currentTpl.unidad})</label>
               <input type="number" placeholder="0" value={businessConfig.costoManoObra} onChange={(e) => onConfigFieldChange('costoManoObra', e.target.value)} className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>

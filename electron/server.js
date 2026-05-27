@@ -63,7 +63,7 @@ app.post('/api/pedidos/:id/estado', (req, res) => {
   }
 })
 
-app.get('/{*path}', (req, res) => {
+app.use((req, res) => {
   res.sendFile(path.join(distPath, 'index.html'))
 })
 

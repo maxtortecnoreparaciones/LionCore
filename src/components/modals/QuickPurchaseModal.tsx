@@ -3,6 +3,7 @@ interface QuickPurchaseModalProps {
   quickPurchaseProduct: string
   quickPurchaseQty: string
   quickPurchaseCost: string
+  pricingMode?: string
   onQtyChange: (v: string) => void
   onCostChange: (v: string) => void
   onSave: () => void
@@ -13,11 +14,13 @@ export default function QuickPurchaseModal({
   quickPurchaseProduct,
   quickPurchaseQty,
   quickPurchaseCost,
+  pricingMode,
   onQtyChange,
   onCostChange,
   onSave,
   onClose,
 }: QuickPurchaseModalProps) {
+  const isWeight = pricingMode === 'WEIGHT'
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
@@ -28,7 +31,7 @@ export default function QuickPurchaseModal({
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{isWeight ? 'Peso (kg)' : 'Cantidad'}</label>
               <input
                 type="number"
                 value={quickPurchaseQty}
@@ -40,7 +43,7 @@ export default function QuickPurchaseModal({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Costo unitario</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{isWeight ? 'Costo total' : 'Costo unitario'}</label>
               <input
                 type="number"
                 value={quickPurchaseCost}
@@ -51,6 +54,11 @@ export default function QuickPurchaseModal({
               />
             </div>
           </div>
+          {isWeight && Number(quickPurchaseQty) > 0 && Number(quickPurchaseCost) > 0 && (
+            <div className="text-xs text-gray-500 text-center">
+              Costo/kg: <strong className="text-green-600">${(Number(quickPurchaseCost) / Number(quickPurchaseQty)).toLocaleString('es-CO')}</strong>
+            </div>
+          )}
           <div className="flex gap-3 pt-2">
             <button
               onClick={onClose}

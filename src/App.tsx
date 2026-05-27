@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, updateBusinessType, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, resetAllMesas, InventoryConfig, getInventoryConfig, saveInventoryConfig, adjustInventory, getInventoryMode, createProduction, getProductions, getProductionDashboard, Production, getRawMaterials, getFinalProducts, createServiceOrder, updateServiceOrderStatus, getServiceOrders, ServiceOrder, upsertCustomer, sendWhatsAppReceipt, getWarehouses, Warehouse, createWarehouse, deleteWarehouse, getWarehouseStock, transferStock, WarehouseStock, getProducts, Product } from './services/db'
+import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, updateBusinessType, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, resetAllMesas, setOrderItemStatus, InventoryConfig, getInventoryConfig, saveInventoryConfig, adjustInventory, getInventoryMode, createProduction, getProductions, getProductionDashboard, Production, getRawMaterials, getFinalProducts, createServiceOrder, updateServiceOrderStatus, getServiceOrders, ServiceOrder, upsertCustomer, sendWhatsAppReceipt, getProducts, Product, getDefaultUnit, generateNextProductCode, deleteProduct, isWeightUnit } from './services/db'
 import { getLicenseState, isFeatureAllowed, activateLicense, checkLicenseStatus, refreshLicenseCheck, getUpgradeMessage, getDeviceId, deactivateLicense, fetchSheetData, saveLicenseState } from './services/license'
 import RestaurantModule from './components/restaurant/RestaurantModule'
+import CocinaView from './components/restaurant/CocinaView'
 import AppHeader from './components/layout/AppHeader'
 import LicenseModal from './components/modals/LicenseModal'
 import DeviceModal from './components/modals/DeviceModal'
@@ -17,7 +18,10 @@ import InventoryView from './components/views/InventoryView'
 import ProductionView from './components/views/ProductionView'
 import { FruverView } from './components/views/FruverView'
 import ServicesView from './components/views/ServicesView'
-import WarehousesView from './components/views/WarehousesView'
+import CustomersView from './components/views/CustomersView'
+import SuppliersView from './components/views/SuppliersView'
+import InventoryHistoryView from './components/views/InventoryHistoryView'
+import CategoriesView from './components/views/CategoriesView'
 import { formatCOP } from './utils/format'
 import InvoicePreview from './components/modals/InvoicePreview'
 import WasteModal from './components/modals/WasteModal'
@@ -25,8 +29,6 @@ import AddProductModal from './components/modals/AddProductModal'
 import EditProductModal from './components/modals/EditProductModal'
 import QuickPurchaseModal from './components/modals/QuickPurchaseModal'
 import QuickAdjustModal from './components/modals/QuickAdjustModal'
-import NewWarehouseModal from './components/modals/NewWarehouseModal'
-import TransferStockModal from './components/modals/TransferStockModal'
 import ServiceOrderModal from './components/modals/ServiceOrderModal'
 import NewBusinessModal from './components/modals/NewBusinessModal'
 import LicenseExpiredModal from './components/modals/LicenseExpiredModal'
@@ -38,6 +40,8 @@ type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
 interface Item {
   id: number
   producto: string
+  code?: string
+  unit?: string
   cantidad: number
   precio: number
 }
@@ -51,6 +55,13 @@ function App() {
     const params = new URLSearchParams(window.location.search)
     return Number(params.get("business")) || 1
   })()
+  
+  const routePath = (() => {
+    const p = window.location.pathname.replace(/\/$/, '') || '/'
+    return p
+  })()
+  const isKitchenRoute = routePath === '/kitchen'
+  const isWaiterRoute = routePath === '/waiter'
   
   const [currentBusinessType, setCurrentBusinessType] = useState<BusinessType>('pos')
   const currentTpl = businessTemplates[currentBusinessType] || businessTemplates.pos
@@ -112,7 +123,6 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [licenseDebug, setLicenseDebug] = useState<string>('')
   const [todayWow, setTodayWow] = useState<{ ventas: number; ganancia: number } | null>(null)
   const [loadingWow, setLoadingWow] = useState(false)
-  const [isDemo, setIsDemo] = useState(false)
   const [mesas, setMesas] = useState<Mesa[]>([])
   const [selectedMesa, setSelectedMesa] = useState<Mesa | null>(null)
   const [showMesaProductSelect, setShowMesaProductSelect] = useState(false)
@@ -144,12 +154,16 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [rawMaterials, setRawMaterials] = useState<any[]>([])
   const [finalProducts, setFinalProducts] = useState<any[]>([])
   const [showFruverDashboard, setShowFruverDashboard] = useState(false)
-  const [fruverDashboard, setFruverDashboard] = useState<{ventasHoy: number; mermaHoy: number; gananciaHoy: number; productosCriticos: {name: string; stock: number; diasRestantes: number}[]} | null>(null)
+  const [fruverDashboard, setFruverDashboard] = useState<{ventasHoy: number; mermaHoy: number; gananciaHoy: number; productosCriticos: {name: string; code?: string; stock: number; diasRestantes: number}[]} | null>(null)
   const [showWasteModal, setShowWasteModal] = useState(false)
   const [wasteProduct, setWasteProduct] = useState('')
   const [wasteQty, setWasteQty] = useState('')
   const [wasteReason, setWasteReason] = useState('')
   const [showServices, setShowServices] = useState(false)
+  const [showCustomers, setShowCustomers] = useState(false)
+  const [showSuppliers, setShowSuppliers] = useState(false)
+  const [showInventoryHistory, setShowInventoryHistory] = useState(false)
+  const [showCategories, setShowCategories] = useState(false)
   const [showServiceModal, setShowServiceModal] = useState(false)
   const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>([])
   const [serviceClientName, setServiceClientName] = useState('')
@@ -160,29 +174,27 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [servicePrice, setServicePrice] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [customerName, setCustomerName] = useState('')
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([])
-  const [selectedWarehouse, setSelectedWarehouse] = useState<number | null>(null)
-  const [warehouseStock, setWarehouseStock] = useState<WarehouseStock[]>([])
-  const [showWarehouseModal, setShowWarehouseModal] = useState(false)
-  const [showTransferModal, setShowTransferModal] = useState(false)
-  const [newWarehouseName, setNewWarehouseName] = useState('')
-  const [newWarehouseAddress, setNewWarehouseAddress] = useState('')
-  const [transferFrom, setTransferFrom] = useState<number | ''>('')
-  const [transferTo, setTransferTo] = useState<number | ''>('')
-  const [transferProduct, setTransferProduct] = useState('')
-  const [transferQty, setTransferQty] = useState('')
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [newProductName, setNewProductName] = useState('')
   const [newProductPrice, setNewProductPrice] = useState('')
   const [newProductCost, setNewProductCost] = useState('')
   const [newProductStock, setNewProductStock] = useState('')
+  const [newProductUnit, setNewProductUnit] = useState(getDefaultUnit(currentBusinessType))
+  const [newProductPricingMode, setNewProductPricingMode] = useState('UNIT')
   const [showEditProduct, setShowEditProduct] = useState(false)
   const [editProductId, setEditProductId] = useState<number | null>(null)
+  const [editProductCode, setEditProductCode] = useState('')
+  const [editProductQR, setEditProductQR] = useState('')
   const [editProductName, setEditProductName] = useState('')
   const [editProductPrice, setEditProductPrice] = useState('')
   const [editProductCost, setEditProductCost] = useState('')
   const [editProductStock, setEditProductStock] = useState('')
+  const [editProductUnit, setEditProductUnit] = useState('')
+  const [editProductProveedor, setEditProductProveedor] = useState('')
+  const [editProductCategoria, setEditProductCategoria] = useState('')
+  const [editProductPricingMode, setEditProductPricingMode] = useState('UNIT')
+  const [editProductMargin, setEditProductMargin] = useState('')
   const [showQuickPurchase, setShowQuickPurchase] = useState(false)
   const [quickPurchaseProduct, setQuickPurchaseProduct] = useState('')
   const [quickPurchaseQty, setQuickPurchaseQty] = useState('')
@@ -262,7 +274,6 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
       }
     })
     setInvConfig(getInventoryConfig())
-    loadWarehouses()
     getProducts().then(setProducts)
   }, [currentBusinessId])
 
@@ -341,98 +352,6 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     loadTodayWow()
   }, [currentBusinessId])
 
-  const loadDemoData = async () => {
-    setIsDemo(true)
-    await getOrCreateDefaultBusiness()
-
-    const demoProducts = [
-      { name: 'Pollo Deshidratado', price: 35000, cost: 18000 },
-      { name: 'Chuleta Deshidratada', price: 42000, cost: 22000 },
-      { name: 'Carne Seca', price: 38000, cost: 20000 },
-      { name: 'Mango Deshidratado', price: 25000, cost: 12000 },
-      { name: 'Banano Chips', price: 15000, cost: 7000 },
-    ]
-
-    const productIds: number[] = []
-    for (const p of demoProducts) {
-      try {
-        const id = await db.products.add({
-          businessId: currentBusinessId,
-          name: p.name,
-          price: p.price,
-          cost: p.cost,
-          createdAt: new Date(),
-        })
-        productIds.push(id)
-      } catch {}
-    }
-
-    const now = new Date()
-    const todayStart = new Date(now)
-    todayStart.setHours(8, 0, 0, 0)
-
-    const demoSales = [
-      { productId: 0, qty: 3, timeOffset: 30 },
-      { productId: 1, qty: 2, timeOffset: 75 },
-      { productId: 3, qty: 5, timeOffset: 120 },
-      { productId: 4, qty: 8, timeOffset: 180 },
-      { productId: 0, qty: 2, timeOffset: 240 },
-    ]
-
-    for (const sale of demoSales) {
-      const saleDate = new Date(todayStart.getTime() + sale.timeOffset * 60000)
-      const product = demoProducts[sale.productId]
-      const txId = await db.transactions.add({
-        businessId: currentBusinessId,
-        type: 'venta',
-        total: product.price * sale.qty,
-        date: saleDate,
-      })
-      await db.transaction_items.add({
-        transactionId: txId,
-        productId: productIds[sale.productId],
-        name: product.name,
-        quantity: sale.qty,
-        price: product.price,
-        subtotal: product.price * sale.qty,
-        costUnitario: product.cost,
-      })
-    }
-
-    const expenseDate = new Date(todayStart.getTime() + 60 * 60000)
-    const expenseTxId = await db.transactions.add({
-      businessId: currentBusinessId,
-      type: 'gasto',
-      total: 25000,
-      date: expenseDate,
-    })
-    await db.transaction_items.add({
-      transactionId: expenseTxId,
-      name: 'Transporte',
-      quantity: 1,
-      price: 25000,
-      subtotal: 25000,
-    })
-
-    await loadTodayWow()
-    showNotification('success', '🎯 Demo cargada — 5 ventas, 1 gasto')
-  }
-
-  const resetDemoData = async () => {
-    setIsDemo(false)
-    const businessId = currentBusinessId
-    const txs = await db.transactions.where('businessId').equals(businessId).toArray()
-    for (const tx of txs) {
-      await db.transaction_items.where('transactionId').equals(tx.id!).delete()
-      await db.transaction_meta.where('transactionId').equals(tx.id!).delete()
-      await db.transactions.delete(tx.id!)
-    }
-    await db.products.where('businessId').equals(businessId).delete()
-    setTodayWow(null)
-    await loadTodayWow()
-    showNotification('success', 'Datos reseteados')
-  }
-
   const total = items.reduce((sum, item) => sum + item.cantidad * item.precio, 0)
 
   const showNotification = (type: 'success' | 'error', message: string) => {
@@ -503,16 +422,19 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     await loadSummary(period)
   }
 
-  const handleAgregar = () => {
-    const precioNum = Number(precio)
-    if (!producto.trim() || cantidad < 1 || !precio || precioNum <= 0) {
+  const handleAgregar = async () => {
+    const precioNum = Number(String(precio).replace(',', '.'))
+    if (!producto.trim() || cantidad <= 0 || !precio || precioNum <= 0) {
       showNotification('error', 'Completa todos los campos')
       return
     }
 
+    const product = await db.products.where({ businessId: currentBusinessId, name: producto.trim() }).first()
     const newItem: Item = {
       id: Date.now(),
       producto: producto.trim(),
+      code: product?.code,
+      unit: product?.unidad,
       cantidad,
       precio: precioNum,
     }
@@ -537,8 +459,8 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const handleActualizar = () => {
     if (editingId === null) return
 
-    const precioNum = Number(precio)
-    if (!producto.trim() || cantidad < 1 || !precio || precioNum <= 0) {
+    const precioNum = Number(String(precio).replace(',', '.'))
+    if (!producto.trim() || cantidad <= 0 || !precio || precioNum <= 0) {
       showNotification('error', 'Completa todos los campos')
       return
     }
@@ -596,19 +518,23 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
       await getOrCreateDefaultBusiness()
 
       const products = await db.products.where('businessId').equals(currentBusinessId).toArray()
-      const productMap = new Map<string, { cost?: number }>()
-      products.forEach(p => productMap.set(p.name.toLowerCase(), { cost: p.cost }))
+      const productMap = new Map<string, { id?: number; cost?: number; unit?: string; code?: string }>()
+      products.forEach(p => productMap.set(p.name.toLowerCase(), { id: p.id, cost: p.cost, unit: p.unidad, code: p.code }))
 
       const transactionItems = items.map(item => {
         const isProduction = mode === 'produccion'
         const kgQuantity = isProduction && productionMeta.pesoSalida ? Number(productionMeta.pesoSalida) : item.cantidad
-        const productCost = productMap.get(item.producto.toLowerCase())?.cost
+        const productInfo = productMap.get(item.producto.toLowerCase())
+        const productCost = productInfo?.cost
         return {
           name: item.producto,
+          productId: productInfo?.id,
           quantity: kgQuantity,
           price: item.precio,
           subtotal: kgQuantity * item.precio,
-          costUnitario: productCost || (isProduction ? item.precio / kgQuantity : undefined),
+          costUnitario: productCost ?? (isProduction ? item.precio / kgQuantity : undefined),
+          unit: productInfo?.unit,
+          code: item.code,
         }
       })
 
@@ -663,28 +589,57 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
       return
     }
     if (!newProductPrice || Number(newProductPrice) <= 0) {
-      showNotification('error', 'Ingresa un precio válido')
+      showNotification('error', 'Ingresa un precio de venta válido')
       return
     }
     try {
-      await db.products.add({
+      const code = await generateNextProductCode(currentBusinessId, currentBusinessType)
+      const isWeight = isWeightUnit(newProductUnit)
+      const pricingMode = isWeight ? 'WEIGHT' : 'UNIT'
+      const qty = Number(newProductStock) || 0
+      const totalCost = Number(newProductCost) || 0
+      const costPerUnit = qty > 0 && totalCost > 0 ? totalCost / qty : (Number(newProductCost) || 0)
+
+      const productId = await db.products.add({
         businessId: currentBusinessId,
+        code,
         name: newProductName.trim(),
         price: Number(newProductPrice),
-        cost: newProductCost ? Number(newProductCost) : 0,
-        stock: newProductStock ? Number(newProductStock) : 0,
+        cost: costPerUnit,
+        stock: qty,
+        unidad: newProductUnit,
+        pricingMode: pricingMode as 'UNIT' | 'WEIGHT',
         createdAt: new Date(),
       })
+
+      if (qty > 0 && totalCost > 0) {
+        const txId = await db.transactions.add({
+          businessId: currentBusinessId,
+          type: 'compra',
+          total: totalCost,
+          date: new Date(),
+        })
+        await db.transaction_items.add({
+          transactionId: txId,
+          productId,
+          name: newProductName.trim(),
+          quantity: qty,
+          price: costPerUnit,
+          subtotal: totalCost,
+          costUnitario: costPerUnit,
+        })
+      }
+
       setNewProductName('')
       setNewProductPrice('')
       setNewProductCost('')
       setNewProductStock('')
+      setNewProductUnit(getDefaultUnit(currentBusinessType))
+      setNewProductPricingMode('UNIT')
       setShowAddProduct(false)
-      showNotification('success', 'Producto agregado correctamente')
-      if (showInventory) {
-        const stockData = await getStockByProduct()
-        setInventory(stockData)
-      }
+      showNotification('success', `Producto "${newProductName.trim()}" agregado${qty > 0 && totalCost > 0 ? ' con compra registrada' : ''}`)
+      const stockData = await getStockByProduct()
+      setInventory(stockData)
     } catch (error) {
       console.error('Error al agregar producto:', error)
       showNotification('error', 'Error al agregar el producto')
@@ -695,10 +650,17 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     const product = await db.products.where({ businessId: currentBusinessId, name: productName }).first()
     if (product) {
       setEditProductId(product.id || null)
+      setEditProductCode(product.code || '')
+      setEditProductQR(product.qr || '')
       setEditProductName(product.name)
       setEditProductPrice(String(product.price))
       setEditProductCost(product.cost ? String(product.cost) : '')
       setEditProductStock(product.stock ? String(product.stock) : '0')
+      setEditProductUnit(product.unidad || getDefaultUnit(currentBusinessType))
+      setEditProductProveedor(product.proveedor || '')
+      setEditProductCategoria(product.categoria || '')
+      setEditProductPricingMode(product.pricingMode || 'UNIT')
+      setEditProductMargin(product.margin ? String(product.margin) : '')
       setShowEditProduct(true)
     }
   }
@@ -714,10 +676,17 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     }
     try {
       await db.products.update(editProductId, {
+        code: editProductCode.trim() || undefined,
+        qr: editProductQR.trim() || undefined,
         name: editProductName.trim(),
         price: Number(editProductPrice),
         cost: editProductCost ? Number(editProductCost) : 0,
         stock: editProductStock ? Number(editProductStock) : 0,
+        unidad: editProductUnit,
+        proveedor: editProductProveedor.trim() || undefined,
+        categoria: editProductCategoria.trim() || undefined,
+        pricingMode: editProductPricingMode as 'UNIT' | 'WEIGHT',
+        margin: editProductMargin ? Number(editProductMargin) : undefined,
       })
       setShowEditProduct(false)
       setEditProductId(null)
@@ -753,11 +722,14 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
         return
       }
       const qty = Number(quickPurchaseQty)
-      const cost = quickPurchaseCost ? Number(quickPurchaseCost) : product.cost || 0
+      const isWeightProduct = product.pricingMode === 'WEIGHT'
+      const costFromInput = quickPurchaseCost ? Number(quickPurchaseCost) : 0
+      const costPerKg = isWeightProduct && costFromInput > 0 ? costFromInput / qty : costFromInput
+      const finalCost = costPerKg || product.cost || 0
       const txId = await db.transactions.add({
         businessId: currentBusinessId,
         type: 'compra',
-        total: qty * cost,
+        total: isWeightProduct && costFromInput > 0 ? costFromInput : qty * finalCost,
         date: new Date(),
       })
       await db.transaction_items.add({
@@ -765,14 +737,15 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
         productId: product.id,
         name: product.name,
         quantity: qty,
-        price: cost,
-        subtotal: qty * cost,
-        costUnitario: cost,
+        price: finalCost,
+        subtotal: isWeightProduct && costFromInput > 0 ? costFromInput : qty * finalCost,
+        costUnitario: finalCost,
       })
       const newStock = (product.stock || 0) + qty
-      await db.products.update(product.id!, { stock: newStock, cost })
+      await db.products.update(product.id!, { stock: newStock, cost: finalCost })
+      const unitLabel = product.unidad || getDefaultUnit(currentBusinessType)
       setShowQuickPurchase(false)
-      showNotification('success', `Compra registrada: ${qty} unidades de ${quickPurchaseProduct}`)
+      showNotification('success', `Compra registrada: ${qty} ${unitLabel} de ${quickPurchaseProduct}`)
       const stockData = await getStockByProduct()
       setInventory(stockData)
     } catch (error) {
@@ -829,9 +802,20 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
       if (inlineEditField.field === 'price') {
         await handleQuickPriceChange(productId, val)
       } else {
+        const product = await db.products.get(productId)
+        if (!product) {
+          showNotification('error', 'Producto no encontrado')
+          setInlineEditField(null)
+          return
+        }
+        const oldStock = product.stock || 0
+        const diff = val - oldStock
         const updates: Record<string, number> = {}
         updates[inlineEditField.field] = val
         await db.products.update(productId, updates)
+        if (inlineEditField.field === 'stock' && diff !== 0) {
+          await adjustInventory(product.name, diff, `Ajuste inline: ${oldStock} → ${val}`)
+        }
         showNotification('success', 'Actualizado')
       }
       const stockData = await getStockByProduct()
@@ -1000,84 +984,12 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   }
 
   const handleSendWhatsApp = async () => {
-    const product = items.map(i => `${i.producto} x${i.cantidad}`).join(', ')
+    const product = items.map(i => `${i.code ? '['+i.code+'] ' : ''}${i.producto} x${i.cantidad}`).join(', ')
     if (customerPhone) {
       await sendWhatsAppReceipt(customerPhone, product, total)
     } else {
       const msg = `Tu compra en LionCore:%0A${product}%0ATotal: $${total.toLocaleString('es-CO')}`
       window.open(`https://wa.me/573138777115?text=${msg}`, '_blank')
-    }
-  }
-
-  const loadWarehouses = async () => {
-    try {
-      const wh = await getWarehouses()
-      setWarehouses(wh)
-      if (wh.length > 0 && !selectedWarehouse) {
-        const def = wh.find(w => w.isDefault) || wh[0]
-        setSelectedWarehouse(def.id!)
-      }
-    } catch (error) {
-      console.error('Error loading warehouses:', error)
-    }
-  }
-
-  const loadWarehouseStock = async (warehouseId: number) => {
-    try {
-      const stock = await getWarehouseStock(warehouseId)
-      setWarehouseStock(stock)
-    } catch (error) {
-      console.error('Error loading warehouse stock:', error)
-    }
-  }
-
-  const handleCreateWarehouse = async () => {
-    if (!newWarehouseName) {
-      showNotification('error', 'Nombre de bodega requerido')
-      return
-    }
-    try {
-      await createWarehouse(newWarehouseName, newWarehouseAddress || undefined)
-      showNotification('success', 'Bodega creada')
-      setNewWarehouseName('')
-      setNewWarehouseAddress('')
-      setShowWarehouseModal(false)
-      await loadWarehouses()
-    } catch (error) {
-      console.error('Error creating warehouse:', error)
-      showNotification('error', 'Error al crear bodega')
-    }
-  }
-
-  const handleDeleteWarehouse = async (id: number) => {
-    try {
-      await deleteWarehouse(id)
-      showNotification('success', 'Bodega eliminada')
-      if (selectedWarehouse === id) setSelectedWarehouse(null)
-      await loadWarehouses()
-    } catch (error) {
-      console.error('Error deleting warehouse:', error)
-      showNotification('error', 'Error al eliminar bodega')
-    }
-  }
-
-  const handleTransferStock = async () => {
-    if (!transferFrom || !transferTo || !transferProduct || !transferQty) {
-      showNotification('error', 'Completa todos los campos')
-      return
-    }
-    try {
-      await transferStock(Number(transferFrom), Number(transferTo), transferProduct, Number(transferQty))
-      showNotification('success', 'Transferencia completada')
-      setTransferFrom('')
-      setTransferTo('')
-      setTransferProduct('')
-      setTransferQty('')
-      setShowTransferModal(false)
-      if (selectedWarehouse) await loadWarehouseStock(selectedWarehouse)
-    } catch (error: any) {
-      console.error('Error transferring stock:', error)
-      showNotification('error', error.message || 'Error en transferencia')
     }
   }
 
@@ -1122,8 +1034,55 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
         />
       )}
 
-      <div className="min-h-screen bg-gray-100 py-6 px-4">
-        <div className="w-full max-w-7xl mx-auto space-y-4">
+      {isKitchenRoute ? (
+        <div className="min-h-screen bg-gray-100 p-4">
+          <div className="w-full max-w-7xl mx-auto">
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <CocinaView
+                mesas={mesas}
+                onCobrar={(mesa: Mesa) => showNotification('success', `Notifica al mesero: Mesa ${mesa.name} - ${formatCOP(mesa.total)}`)}
+                onUpdateItemStatus={async (mesaId: number, itemIndex: number, status: 'pendiente' | 'preparando' | 'listo') => {
+                  await setOrderItemStatus(mesaId, itemIndex, status)
+                  getMesas().then(setMesas)
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      ) : isWaiterRoute ? (
+        <div className="min-h-screen bg-gray-100 p-4">
+          <div className="w-full max-w-7xl mx-auto">
+            {currentBusinessType === 'restaurante' ? (
+              <RestaurantModule
+                mesas={mesas} setMesas={setMesas}
+                selectedMesa={selectedMesa} setSelectedMesa={setSelectedMesa}
+                showCocina={showCocina} setShowCocina={setShowCocina}
+                serverInfo={serverInfo} showServerInfo={showServerInfo} setShowServerInfo={setShowServerInfo}
+                fetchServerInfo={fetchServerInfo}
+                products={products}
+                showMesaProductSelect={showMesaProductSelect} setShowMesaProductSelect={setShowMesaProductSelect}
+                mesaSelectedProduct={mesaSelectedProduct} setMesaSelectedProduct={setMesaSelectedProduct}
+                mesaProductQty={mesaProductQty} setMesaProductQty={setMesaProductQty}
+                mesaSelectedPrice={mesaSelectedPrice} setMesaSelectedPrice={setMesaSelectedPrice}
+                showPaymentModal={showPaymentModal} setShowPaymentModal={setShowPaymentModal}
+                paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod}
+                showMoveMesaModal={showMoveMesaModal} setShowMoveMesaModal={setShowMoveMesaModal}
+                moveTargetMesaId={moveTargetMesaId} setMoveTargetMesaId={setMoveTargetMesaId}
+                showNotification={showNotification}
+                loadTodayWow={loadTodayWow}
+                currentBusinessType={currentBusinessType}
+              />
+            ) : (
+              <div className="text-center text-gray-500 py-12">
+                <p className="text-lg font-semibold">⚠️ El negocio actual no es de tipo restaurante</p>
+                <p className="text-sm mt-2">Abre la página principal (<code>/</code>) y selecciona o crea un negocio de tipo restaurante.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="min-h-screen bg-gray-100 py-6 px-4">
+          <div className="w-full max-w-7xl mx-auto space-y-4">
           {!licenseState.isActivated && (
             <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 flex items-center justify-between">
               <div>
@@ -1176,6 +1135,10 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             showProduction={showProduction}
             showFruverDashboard={showFruverDashboard}
             showServices={showServices}
+            showCustomers={showCustomers}
+            showSuppliers={showSuppliers}
+            showInventoryHistory={showInventoryHistory}
+            showCategories={showCategories}
             showMoreMenu={showMoreMenu}
             onShowDeviceModal={() => setShowDeviceModal(true)}
             onShowLicenseModal={() => setShowLicenseModal(true)}
@@ -1188,6 +1151,10 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             onToggleSummary={() => { handleToggleSummary(); setShowHistory(false); setShowInventory(false); setShowConfig(false); }}
             onToggleHistory={() => { handleToggleHistory(); setShowSummary(false); setShowInventory(false); setShowConfig(false); }}
             onToggleMoreMenu={() => setShowMoreMenu(!showMoreMenu)}
+            onToggleCustomers={() => { setShowCustomers(!showCustomers); setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowServices(false); setShowProduction(false); setShowFruverDashboard(false); setShowSuppliers(false) }}
+            onToggleSuppliers={() => { setShowSuppliers(!showSuppliers); setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowServices(false); setShowProduction(false); setShowFruverDashboard(false); setShowCustomers(false); setShowInventoryHistory(false) }}
+            onToggleInventoryHistory={() => { setShowInventoryHistory(!showInventoryHistory); setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowServices(false); setShowProduction(false); setShowFruverDashboard(false); setShowCustomers(false); setShowSuppliers(false); setShowCategories(false) }}
+            onToggleCategories={() => { setShowCategories(!showCategories); setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowServices(false); setShowProduction(false); setShowFruverDashboard(false); setShowCustomers(false); setShowSuppliers(false); setShowInventoryHistory(false) }}
             onSetShowMoreMenu={(v: boolean) => setShowMoreMenu(v)}
             onSetShowReferrals={(v: boolean) => setShowReferrals(v)}
             onExportCSV={async () => {
@@ -1226,50 +1193,6 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
 
           {!showConfig && !showSummary && !showHistory && !showInventory && (
             <>
-              <div className="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-emerald-500">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <p className="text-sm text-gray-500 font-medium uppercase tracking-wide">Hoy vendiste</p>
-                    <p className="text-4xl font-black text-gray-800 mt-1">
-                      {loadingWow ? '...' : formatCOP(todayWow?.ventas || 0)}
-                    </p>
-                  </div>
-                  <div className="flex-1 text-right border-l border-gray-200 pl-6">
-                    <p className="text-sm text-gray-500 font-medium uppercase tracking-wide">Hoy ganaste 🔥</p>
-                    <p className={`text-4xl font-black mt-1 ${((todayWow?.ganancia || 0) >= 0) ? 'text-emerald-600' : 'text-red-600'}`}>
-                      {loadingWow ? '...' : formatCOP(todayWow?.ganancia || 0)}
-                    </p>
-                    {todayWow && (todayWow.ventas > 0) && (
-                      <p className="text-xs text-gray-400 mt-1">
-                        Esto es lo que realmente te queda en el bolsillo
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="mt-4 flex gap-2 justify-between items-center">
-                  <p className="text-xs text-gray-400">
-                    {!todayWow || todayWow.ventas === 0 ? 'Registra tu primera venta para ver tus números' : 'Actualizado en tiempo real'}
-                  </p>
-                  <div className="flex gap-2">
-                    {!isDemo ? (
-                      <button
-                        onClick={loadDemoData}
-                        className="px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg text-xs font-semibold hover:bg-purple-200"
-                      >
-                        🎯 Modo Demo
-                      </button>
-                    ) : (
-                      <button
-                        onClick={resetDemoData}
-                        className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-semibold hover:bg-red-200"
-                      >
-                        🗑️ Reset Demo
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
               {currentBusinessType === 'restaurante' && (
                 <RestaurantModule
                   mesas={mesas} setMesas={setMesas}
@@ -1338,6 +1261,8 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             summary={summary}
             netProfit={netProfit}
             loadingNetProfit={loadingNetProfit}
+            todayWow={todayWow}
+            loadingWow={loadingWow}
           />
 
           <InventoryView
@@ -1350,12 +1275,17 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             onInlineEditStart={setInlineEditField}
             onInlineEditChange={setInlineEditField}
             onInlineSave={handleInlineSave}
-            unidad={currentTpl.unidad}
             onSelectProduct={(name) => { setProducto(name); setShowInventory(false) }}
             onSetLastPrice={(price) => setPrecio(price)}
             onPurchase={openPurchaseModal}
             onAdjust={openQuickAdjust}
             onEdit={openEditProduct}
+            onDelete={async (name: string) => {
+              await deleteProduct(name)
+              const updated = await getStockByProduct()
+              setInventory(updated)
+              showNotification('success', `"${name}" eliminado`)
+            }}
             canPurchase={isFeatureAllowed('compra')}
             canAdjust={isFeatureAllowed('config')}
           />
@@ -1366,6 +1296,7 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             rawMaterial={productionRawMaterial}
             onRawMaterialChange={setProductionRawMaterial}
             rawMaterials={rawMaterials as any}
+            defaultUnit={getDefaultUnit(currentBusinessType)}
             finalProduct={productionFinalProduct}
             onFinalProductChange={setProductionFinalProduct}
             finalProducts={finalProducts as any}
@@ -1383,6 +1314,7 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
           <FruverView
             show={showFruverDashboard}
             fruverDashboard={fruverDashboard as any}
+            defaultUnit={getDefaultUnit(currentBusinessType)}
             onRegisterWaste={() => setShowWasteModal(true)}
           />
 
@@ -1442,6 +1374,23 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             show={showHistory}
             transactions={transactions as any}
             loadingHistory={loadingHistory}
+            defaultUnit={getDefaultUnit(currentBusinessType)}
+          />
+
+          <CustomersView
+            show={showCustomers}
+          />
+
+          <SuppliersView
+            show={showSuppliers}
+          />
+
+          <InventoryHistoryView
+            show={showInventoryHistory}
+          />
+
+          <CategoriesView
+            show={showCategories}
           />
 
           {showLicenseModal && (
@@ -1509,16 +1458,6 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             onSendWhatsApp={async (phone, device, price) => { await sendWhatsAppReceipt(phone, `Servicio ${device}`, price) }}
           />
 
-          <WarehousesView
-            warehouses={warehouses}
-            selectedWarehouse={selectedWarehouse}
-            warehouseStock={warehouseStock}
-            onSelectWarehouse={(id) => { setSelectedWarehouse(id); loadWarehouseStock(id) }}
-            onDeleteWarehouse={(id) => handleDeleteWarehouse(id)}
-            onNewWarehouse={() => setShowWarehouseModal(true)}
-            onTransfer={() => setShowTransferModal(true)}
-          />
-
           {showServiceModal && (
             <ServiceOrderModal
               show={showServiceModal}
@@ -1539,29 +1478,19 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             />
           )}
 
-          {!showConfig && !showSummary && !showHistory && !showInventory && !showMoreMenu && !showServices && (
+          {!showConfig && !showSummary && !showHistory && !showInventory && !showMoreMenu && !showServices && !showAddProduct && (
             <div className="fixed bottom-6 right-6 z-50">
               {fabOpen && (
-                <div className="absolute bottom-16 right-0 space-y-2">
+                <div className="absolute bottom-16 right-0 space-y-3">
                   <button
                     onClick={() => {
                       setMode('venta')
                       setFabOpen(false)
                       setShowInventory(false); setShowConfig(false); setShowSummary(false); setShowHistory(false);
                     }}
-                    className="flex items-center gap-2 bg-green-600 text-white px-4 py-3 rounded-full shadow-lg hover:bg-green-700 transition-all whitespace-nowrap"
+                    className="flex items-center gap-3 bg-green-600 text-white px-5 py-3 rounded-full shadow-xl hover:bg-green-700 hover:scale-105 transition-all whitespace-nowrap"
                   >
-                    <span>💰</span> Venta
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowInventory(true)
-                      getStockByProduct().then(setInventory)
-                      setFabOpen(false)
-                    }}
-                    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-3 rounded-full shadow-lg hover:bg-blue-700 transition-all whitespace-nowrap"
-                  >
-                    <span>📦</span> Inventario
+                    <span className="text-xl">💰</span> Nueva Venta
                   </button>
                   <button
                     onClick={() => {
@@ -1574,16 +1503,22 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                         setFabOpen(false)
                       }
                     }}
-                    className="flex items-center gap-2 bg-red-600 text-white px-4 py-3 rounded-full shadow-lg hover:bg-red-700 transition-all whitespace-nowrap"
+                    className="flex items-center gap-3 bg-orange-600 text-white px-5 py-3 rounded-full shadow-xl hover:bg-orange-700 hover:scale-105 transition-all whitespace-nowrap"
                   >
-                    <span>📝</span> Gasto
+                    <span className="text-xl">📝</span> Registrar Gasto
+                  </button>
+                  <button
+                    onClick={() => { setFabOpen(false); setShowAddProduct(true); }}
+                    className="flex items-center gap-3 bg-blue-600 text-white px-5 py-3 rounded-full shadow-xl hover:bg-blue-700 hover:scale-105 transition-all whitespace-nowrap"
+                  >
+                    <span className="text-xl">📦</span> Agregar Producto
                   </button>
                 </div>
               )}
               <button
                 onClick={() => setFabOpen(!fabOpen)}
-                className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-white text-2xl font-bold transition-all ${
-                  fabOpen ? 'bg-gray-600 rotate-45' : 'bg-blue-600 hover:bg-blue-700'
+                className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-white text-3xl font-bold transition-all duration-300 ${
+                  fabOpen ? 'bg-gray-600 rotate-45' : 'bg-blue-600 hover:bg-blue-700 hover:scale-110'
                 }`}
               >
                 +
@@ -1696,10 +1631,16 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
               newProductPrice={newProductPrice}
               newProductCost={newProductCost}
               newProductStock={newProductStock}
+              newProductUnit={newProductUnit}
+              newProductPricingMode={newProductPricingMode}
               onNameChange={setNewProductName}
               onPriceChange={setNewProductPrice}
               onCostChange={setNewProductCost}
               onStockChange={setNewProductStock}
+              onUnitChange={(v: string) => {
+                setNewProductUnit(v as any)
+                if (v === 'kg' || v === 'g' || v === 'lb' || v === 'oz') setNewProductPricingMode('WEIGHT')
+              }}
               onSave={handleAddProduct}
               onClose={() => setShowAddProduct(false)}
             />
@@ -1708,14 +1649,28 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
           {showEditProduct && (
             <EditProductModal
               show={showEditProduct}
+              editProductCode={editProductCode}
+              editProductQR={editProductQR}
               editProductName={editProductName}
               editProductPrice={editProductPrice}
               editProductCost={editProductCost}
               editProductStock={editProductStock}
+              editProductUnit={editProductUnit}
+              editProductProveedor={editProductProveedor}
+              editProductCategoria={editProductCategoria}
+              editProductPricingMode={editProductPricingMode}
+              editProductMargin={editProductMargin}
+              onCodeChange={setEditProductCode}
+              onQRChange={setEditProductQR}
               onNameChange={setEditProductName}
               onPriceChange={setEditProductPrice}
               onCostChange={setEditProductCost}
               onStockChange={setEditProductStock}
+              onUnitChange={setEditProductUnit}
+              onProveedorChange={setEditProductProveedor}
+              onCategoriaChange={setEditProductCategoria}
+              onPricingModeChange={setEditProductPricingMode}
+              onMarginChange={setEditProductMargin}
               onSave={handleUpdateProduct}
               onClose={() => setShowEditProduct(false)}
             />
@@ -1727,6 +1682,7 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
               quickPurchaseProduct={quickPurchaseProduct}
               quickPurchaseQty={quickPurchaseQty}
               quickPurchaseCost={quickPurchaseCost}
+              pricingMode={(() => { const p = products.find(pr => pr.name === quickPurchaseProduct); return p?.pricingMode })()}
               onQtyChange={setQuickPurchaseQty}
               onCostChange={setQuickPurchaseCost}
               onSave={handleQuickPurchase}
@@ -1744,35 +1700,6 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
               onTypeChange={setQuickAdjustType}
               onSave={handleQuickAdjust}
               onClose={() => setShowQuickAdjust(false)}
-            />
-          )}
-
-          {showWarehouseModal && (
-            <NewWarehouseModal
-              show={showWarehouseModal}
-              newWarehouseName={newWarehouseName}
-              newWarehouseAddress={newWarehouseAddress}
-              onNameChange={setNewWarehouseName}
-              onAddressChange={setNewWarehouseAddress}
-              onCreate={handleCreateWarehouse}
-              onClose={() => setShowWarehouseModal(false)}
-            />
-          )}
-
-          {showTransferModal && (
-            <TransferStockModal
-              show={showTransferModal}
-              transferFrom={transferFrom}
-              transferTo={transferTo}
-              transferProduct={transferProduct}
-              transferQty={transferQty}
-              warehouses={warehouses}
-              onFromChange={setTransferFrom}
-              onToChange={setTransferTo}
-              onProductChange={setTransferProduct}
-              onQtyChange={setTransferQty}
-              onTransfer={handleTransferStock}
-              onClose={() => setShowTransferModal(false)}
             />
           )}
 
@@ -1810,42 +1737,9 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             />
           )}
 
-          {!showConfig && !showInventory && !showAddProduct && (
-            <div className="fixed bottom-6 right-6 z-50">
-              {fabOpen && (
-                <div className="absolute bottom-16 right-0 space-y-3 animate-fade-in">
-                  <button
-                    onClick={() => { setMode('venta'); setFabOpen(false) }}
-                    className="flex items-center gap-3 bg-green-600 text-white px-5 py-3 rounded-full shadow-xl hover:bg-green-700 hover:scale-105 transition-all whitespace-nowrap"
-                  >
-                    <span className="text-xl">💰</span> Nueva Venta
-                  </button>
-                  <button
-                    onClick={() => { setMode('gasto'); setFabOpen(false) }}
-                    className="flex items-center gap-3 bg-orange-600 text-white px-5 py-3 rounded-full shadow-xl hover:bg-orange-700 hover:scale-105 transition-all whitespace-nowrap"
-                  >
-                    <span className="text-xl">📝</span> Registrar Gasto
-                  </button>
-                  <button
-                    onClick={() => { setFabOpen(false); setShowAddProduct(true); }}
-                    className="flex items-center gap-3 bg-blue-600 text-white px-5 py-3 rounded-full shadow-xl hover:bg-blue-700 hover:scale-105 transition-all whitespace-nowrap"
-                  >
-                    <span className="text-xl">📦</span> Agregar Producto
-                  </button>
-                </div>
-              )}
-              <button
-                onClick={() => setFabOpen(!fabOpen)}
-                className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-white text-3xl font-bold transition-all duration-300 ${
-                  fabOpen ? 'bg-gray-600 rotate-45' : 'bg-blue-600 hover:bg-blue-700 hover:scale-110'
-                }`}
-              >
-                +
-              </button>
-            </div>
-          )}
         </div>
       </div>
+      )}
     </>
   )
 }

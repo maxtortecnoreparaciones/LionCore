@@ -82,8 +82,10 @@ const RestaurantModule: React.FC<RestaurantModuleProps> = ({
 
   const handleAddProduct = () => {
     if (mesaSelectedProduct && mesaSelectedPrice > 0 && selectedMesa) {
+      const product = products.find(p => p.name === mesaSelectedProduct)
       addToMesa(selectedMesa.id!, {
         name: mesaSelectedProduct,
+        code: product?.code,
         quantity: mesaProductQty,
         price: mesaSelectedPrice,
         subtotal: mesaProductQty * mesaSelectedPrice,
@@ -109,7 +111,7 @@ const RestaurantModule: React.FC<RestaurantModuleProps> = ({
   }
 
   const handleWhatsApp = (mesa: Mesa) => {
-    const items = mesa.orderItems.map(i => `• ${i.quantity}× ${i.name} = ${formatCOP(i.subtotal)}`).join('\n')
+    const items = mesa.orderItems.map(i => `• ${i.code ? '['+i.code+'] ' : ''}${i.quantity}× ${i.name} = ${formatCOP(i.subtotal)}`).join('\n')
     const msg = encodeURIComponent(`🧾 *Cuenta - ${mesa.name}*\n\n${items}\n\n*Total: ${formatCOP(mesa.total)}*`)
     window.open(`https://wa.me/?text=${msg}`, '_blank')
   }

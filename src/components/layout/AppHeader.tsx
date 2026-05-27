@@ -12,6 +12,10 @@ interface AppHeaderProps {
   showProduction: boolean
   showFruverDashboard: boolean
   showServices: boolean
+  showCustomers: boolean
+  showSuppliers: boolean
+  showInventoryHistory: boolean
+  showCategories: boolean
   showMoreMenu: boolean
   onShowDeviceModal: () => void
   onShowLicenseModal: () => void
@@ -24,6 +28,10 @@ interface AppHeaderProps {
   onToggleFruverDashboard: () => void
   onToggleServices: () => void
   onToggleMoreMenu: () => void
+  onToggleCustomers: () => void
+  onToggleSuppliers: () => void
+  onToggleInventoryHistory: () => void
+  onToggleCategories: () => void
   onSetShowMoreMenu: (v: boolean) => void
   onSetShowReferrals: (v: boolean) => void
   onExportCSV: () => Promise<void>
@@ -38,12 +46,14 @@ interface AppHeaderProps {
 
 const AppHeader: React.FC<AppHeaderProps> = ({
   licenseState, licenseStatusCheck, currentTpl, currentBusinessType,
-  showConfig, showSummary, showHistory, showInventory, showProduction, showFruverDashboard, showServices, showMoreMenu,
+  showConfig, showSummary, showHistory, showInventory, showProduction, showFruverDashboard, showServices, showCustomers: _showCustomers, showMoreMenu,
   onShowDeviceModal, onShowLicenseModal, onShowUpgradeModal,
   onToggleConfig, onToggleSummary, onToggleHistory, onToggleInventory, onToggleProduction, onToggleFruverDashboard, onToggleServices,
   onToggleMoreMenu, onSetShowMoreMenu, onSetShowReferrals, onExportCSV,
+  onToggleCustomers, onToggleSuppliers, onToggleInventoryHistory, onToggleCategories,
   onLoadProductionData, onLoadFruverDashboard, onLoadServiceOrders,
-  onSetInventory, isFeatureAllowed, getUpgradeMessage, getStockByProduct }) => {
+  onSetInventory,
+  isFeatureAllowed, getUpgradeMessage, getStockByProduct }) => {
   return (
     <div className="flex justify-between items-center">
       <div className="flex items-center gap-3">
@@ -183,6 +193,30 @@ const AppHeader: React.FC<AppHeaderProps> = ({
                 className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
               >
                 <span>🎁</span> Invitar y ganar
+              </button>
+              <button
+                onClick={() => { onToggleCustomers(); onSetShowMoreMenu(false) }}
+                className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+              >
+                <span>👥</span> Clientes
+              </button>
+              <button
+                onClick={() => { onToggleSuppliers(); onSetShowMoreMenu(false) }}
+                className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+              >
+                <span>🏭</span> Proveedores
+              </button>
+              <button
+                onClick={() => { onToggleInventoryHistory(); onSetShowMoreMenu(false) }}
+                className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+              >
+                <span>📜</span> Historial Inventario
+              </button>
+              <button
+                onClick={() => { onToggleCategories(); onSetShowMoreMenu(false) }}
+                className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+              >
+                <span>📂</span> Categorías
               </button>
               <button
                 onClick={() => { onToggleConfig(); onSetShowMoreMenu(false) }}

@@ -41,13 +41,13 @@ const MesaProductModal: React.FC<MesaProductModalProps> = ({ show, mesaName, pro
             />
             {selectedProduct && (
               <div className="mt-1 max-h-32 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-sm">
-                {products.filter(p => p.name.toLowerCase().includes(selectedProduct.toLowerCase())).slice(0, 6).map(p => (
+                {products.filter(p => { const q = selectedProduct.toLowerCase(); return p.name.toLowerCase().includes(q) || (p.code && p.code.toLowerCase().includes(q)) || (p.qr && p.qr.toLowerCase().includes(q)) }).slice(0, 6).map(p => (
                   <button
                     key={p.id}
                     onClick={() => { onProductChange(p.name); onPriceChange(p.price) }}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 border-b border-gray-100 last:border-0"
                   >
-                    <span className="font-medium">{p.name}</span>
+                    <span className="font-medium">{p.code ? <span className="text-[10px] font-mono bg-blue-50 text-blue-600 rounded px-0.5 mr-1">{p.code}</span> : ''}{p.name}</span>
                     <span className="text-gray-500 ml-2">{formatCOP(p.price)}</span>
                   </button>
                 ))}

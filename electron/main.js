@@ -1,21 +1,12 @@
-import { app, BrowserWindow } from 'electron'
-import path from 'path'
-import { fileURLToPath } from 'url'
-import { startServer, getLocalIP } from './server.js'
+import { app, BrowserWindow, shell } from 'electron'
+    return { action: 'allow' }
+  })
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-
-function createWindow() {
-  const mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 800,
-    minHeight: 600,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-    },
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('❌ Error al cargar:', errorDescription, '(código:', errorCode, ')')
+    if (errorDescription === 'ERR_CONNECTION_REFUSED' || errorCode === -102) {
+      setTimeout(() => mainWindow.reload(), 1500)
+    }
   })
 
   if (process.env.NODE_ENV === 'development') {
@@ -23,6 +14,7 @@ function createWindow() {
     mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadURL('http://localhost:3456')
+    mainWindow.webContents.openDevTools()
   }
 }
 

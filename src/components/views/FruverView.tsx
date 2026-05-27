@@ -4,16 +4,17 @@ interface FruverDashboardData {
   ventasHoy: number
   mermaHoy: number
   gananciaHoy: number
-  productosCriticos: Array<{ name: string; stock: number; diasRestantes: number }>
+  productosCriticos: Array<{ name: string; code?: string; stock: number; diasRestantes: number }>
 }
 
 interface FruverViewProps {
   show: boolean
   fruverDashboard: FruverDashboardData | null
+  defaultUnit: string
   onRegisterWaste: () => void
 }
 
-export function FruverView({ show, fruverDashboard, onRegisterWaste }: FruverViewProps) {
+export function FruverView({ show, fruverDashboard, defaultUnit, onRegisterWaste }: FruverViewProps) {
   if (!show) return null
 
   return (
@@ -39,7 +40,7 @@ export function FruverView({ show, fruverDashboard, onRegisterWaste }: FruverVie
           </div>
           <div className="bg-red-50 rounded-lg p-3 text-center">
             <p className="text-xs text-red-600 font-semibold">Merma Hoy</p>
-            <p className="text-lg font-bold text-red-700">{fruverDashboard.mermaHoy.toFixed(1)} kg</p>
+            <p className="text-lg font-bold text-red-700">{fruverDashboard.mermaHoy.toFixed(1)} {defaultUnit}</p>
           </div>
           <div className="bg-blue-50 rounded-lg p-3 text-center">
             <p className="text-xs text-blue-600 font-semibold">Ganancia Hoy</p>
@@ -61,8 +62,8 @@ export function FruverView({ show, fruverDashboard, onRegisterWaste }: FruverVie
             {fruverDashboard.productosCriticos.map((p, i) => (
               <div key={i} className="bg-red-50 border border-red-200 rounded-lg p-3 flex justify-between items-center">
                 <div>
-                  <p className="font-semibold text-sm">{p.name}</p>
-                  <p className="text-xs text-gray-500">Stock: {p.stock.toFixed(1)} kg</p>
+                  <p className="font-semibold text-sm">{p.code ? <span className="text-[10px] font-mono text-gray-400 mr-1">[{p.code}]</span> : ''}{p.name}</p>
+                  <p className="text-xs text-gray-500">Stock: {(p.stock || 0).toFixed(1)} {defaultUnit}</p>
                 </div>
                 <span className={`text-xs px-2 py-1 rounded-full font-bold ${p.diasRestantes <= 0 ? 'bg-red-200 text-red-800' : 'bg-orange-200 text-orange-800'}`}>
                   {p.diasRestantes <= 0 ? 'VENCIDO' : `${p.diasRestantes} dias`}

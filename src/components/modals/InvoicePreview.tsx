@@ -5,6 +5,8 @@ type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
 interface Item {
   id: number
   producto: string
+  code?: string
+  unit?: string
   cantidad: number
   precio: number
 }
@@ -47,7 +49,10 @@ export default function InvoicePreview({ mode, items, total, onClose }: InvoiceP
               <tbody>
                 {items.map((item) => (
                   <tr key={item.id} className="border-b border-gray-100">
-                    <td className="py-2">{item.producto}</td>
+                    <td className="py-2">
+                      {item.code && <span className="text-[10px] font-mono text-gray-400 block">[{item.code}]</span>}
+                      <span>{item.producto}</span>
+                    </td>
                     <td className="py-2 text-center">x{item.cantidad}</td>
                     <td className="py-2 text-right">{formatCOP(item.cantidad * item.precio)}</td>
                   </tr>

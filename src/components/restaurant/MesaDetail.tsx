@@ -30,7 +30,7 @@ const MesaDetail: React.FC<MesaDetailProps> = ({ mesa, onBack, onRemoveItem, onA
           {mesa.orderItems.map((item, idx) => (
             <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
               <div className="flex-1">
-                <p className="font-semibold text-sm">{item.name}</p>
+                <p className="font-semibold text-sm">{item.code ? <span className="text-[10px] font-mono text-gray-400 mr-1">[{item.code}]</span> : ''}{item.name}</p>
                 <p className="text-xs text-gray-500">{item.quantity} × {formatCOP(item.price)}</p>
               </div>
               <div className="flex items-center gap-3">

@@ -9,9 +9,10 @@ interface HistoryViewProps {
   show: boolean
   transactions: TransactionWithMeta[]
   loadingHistory: boolean
+  defaultUnit: string
 }
 
-export default function HistoryView({ show, transactions, loadingHistory }: HistoryViewProps) {
+export default function HistoryView({ show, transactions, loadingHistory, defaultUnit }: HistoryViewProps) {
   if (!show) return null
 
   return (
@@ -41,9 +42,9 @@ export default function HistoryView({ show, transactions, loadingHistory }: Hist
                 <p className="text-sm text-gray-500 mt-1">{formatDate(tx.date)}</p>
                 {tx.type === 'produccion' && tx.meta && (
                   <div className="mt-2 text-xs text-gray-400 space-y-1">
-                    {tx.meta.peso_entrada && <p>Peso entrada: {tx.meta.peso_entrada}kg</p>}
-                    {tx.meta.peso_salida && <p>Peso salida: {tx.meta.peso_salida}kg</p>}
-                    {tx.meta.desperdicio && <p>Desperdicio: {tx.meta.desperdicio}kg</p>}
+                    {tx.meta.peso_entrada && <p>Peso entrada: {tx.meta.peso_entrada}{defaultUnit}</p>}
+                    {tx.meta.peso_salida && <p>Peso salida: {tx.meta.peso_salida}{defaultUnit}</p>}
+                    {tx.meta.desperdicio && <p>Desperdicio: {tx.meta.desperdicio}{defaultUnit}</p>}
                     {tx.meta.tiempo && <p>Tiempo: {tx.meta.tiempo} min</p>}
                     {tx.meta.notas && <p>Notas: {tx.meta.notas}</p>}
                   </div>

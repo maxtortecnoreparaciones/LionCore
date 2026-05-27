@@ -4,6 +4,29 @@ import Dexie, { Table } from 'dexie'
 
 export type BusinessType = 'pos' | 'deshidratados' | 'restaurante' | 'fruver' | 'service_store'
 
+export const PRODUCT_UNITS = ['kg', 'g', 'lb', 'L', 'mL', 'unidad', 'paquete', 'caja', 'bandeja'] as const
+export type ProductUnit = typeof PRODUCT_UNITS[number]
+
+export function isWeightUnit(unit: string): boolean {
+  return ['kg', 'g', 'lb'].includes(unit)
+}
+
+export function isVolumeUnit(unit: string): boolean {
+  return ['L', 'mL'].includes(unit)
+}
+
+export function isCountUnit(unit: string): boolean {
+  return !isWeightUnit(unit) && !isVolumeUnit(unit)
+}
+
+export function getDefaultUnit(businessType: BusinessType): ProductUnit {
+  const template = businessTemplates[businessType]
+  if (template.unidad === 'kg') return 'kg'
+  if (template.unidad === 'porciones') return 'unidad'
+  if (template.unidad === 'unidades') return 'unidad'
+  return 'unidad'
+}
+
 export interface Business {
   id?: number
   name: string
@@ -78,6 +101,8 @@ export async function getActiveBusinessTemplate(): Promise<typeof businessTempla
 export interface Product {
   id?: number
   businessId: number
+  code?: string
+  qr?: string
   name: string
   price: number
   cost?: number
@@ -86,10 +111,40 @@ export interface Product {
   fechaCompra?: Date
   diasVidaUtil?: number
   unidad?: string
+  proveedor?: string
+  categoria?: string
   licenseKey?: string
   licenseEmail?: string
   licenseUsed?: boolean
+  pricingMode?: 'UNIT' | 'WEIGHT'
+  margin?: number
   createdAt: Date
+}
+
+const BUSINESS_CODE_PREFIXES: Record<BusinessType, string> = {
+  pos: 'POS',
+  deshidratados: 'DES',
+  restaurante: 'RES',
+  fruver: 'FRU',
+  service_store: 'SVC',
+}
+
+export function getBusinessCodePrefix(businessType: BusinessType): string {
+  return BUSINESS_CODE_PREFIXES[businessType] || 'GEN'
+}
+
+export async function generateNextProductCode(businessId: number, businessType?: BusinessType): Promise<string> {
+  const products = await db.products.where('businessId').equals(businessId).toArray()
+  let maxNum = 0
+  const prefix = businessType ? getBusinessCodePrefix(businessType) + '-' : ''
+  for (const p of products) {
+    if (p.code) {
+      const stripped = businessType ? p.code.replace(prefix, '') : p.code
+      const num = parseInt(stripped, 10)
+      if (!isNaN(num) && num > maxNum) maxNum = num
+    }
+  }
+  return prefix + String(maxNum + 1).padStart(3, '0')
 }
 
 export interface ServiceOrder {
@@ -111,8 +166,12 @@ export interface Customer {
   id?: number
   businessId: number
   name: string
+  documento?: string
   phone?: string
   email?: string
+  direccion?: string
+  notas?: string
+  estado: 'activo' | 'inactivo'
   totalPurchases: number
   lastPurchase?: Date
   createdAt: Date
@@ -147,6 +206,29 @@ export interface Customer {
   email?: string
   totalPurchases: number
   lastPurchase?: Date
+  createdAt: Date
+}
+
+export interface Supplier {
+  id?: number
+  businessId: number
+  empresa: string
+  contacto?: string
+  phone?: string
+  email?: string
+  direccion?: string
+  notas?: string
+  estado: 'activo' | 'inactivo'
+  totalPurchases: number
+  lastPurchase?: Date
+  createdAt: Date
+}
+
+export interface Category {
+  id?: number
+  businessId: number
+  name: string
+  parentId?: number
   createdAt: Date
 }
 
@@ -194,6 +276,7 @@ export interface TransactionItem {
   subtotal: number
   costUnitario?: number
   unit?: string
+  code?: string
 }
 
 export interface TransactionMeta {
@@ -208,19 +291,10 @@ export interface Mesa {
   businessId: number
   name: string
   status: 'disponible' | 'abierta' | 'ocupada' | 'cuenta'
-  orderItems: { name: string; quantity: number; price: number; subtotal: number; status?: 'pendiente' | 'preparando' | 'listo' }[]
+  orderItems: { name: string; quantity: number; price: number; subtotal: number; code?: string; status?: 'pendiente' | 'preparando' | 'listo' }[]
   total: number
   createdAt: Date
   closedAt?: Date
-}
-
-export interface InventoryAdjustment {
-  id?: number
-  businessId: number
-  productName: string
-  quantity: number
-  reason: string
-  date: Date
 }
 
 export interface InventoryConfig {
@@ -243,6 +317,8 @@ class LionCoreDB extends Dexie {
   productions!: Table<Production, number>
   service_orders!: Table<ServiceOrder, number>
   customers!: Table<Customer, number>
+  suppliers!: Table<Supplier, number>
+  categories!: Table<Category, number>
   warehouses!: Table<Warehouse, number>
   warehouse_stock!: Table<WarehouseStock, number>
 
@@ -286,6 +362,24 @@ class LionCoreDB extends Dexie {
     this.version(7).stores({
       warehouses: '++id, businessId, name, isDefault',
       warehouse_stock: '++id, businessId, warehouseId, productName, category',
+    }).upgrade(() => {
+      return Promise.resolve()
+    })
+
+    this.version(8).stores({
+      transaction_items: '++id, transactionId, code',
+    }).upgrade(() => {
+      return Promise.resolve()
+    })
+
+    this.version(9).stores({
+      suppliers: '++id, businessId, empresa, phone',
+    }).upgrade(() => {
+      return Promise.resolve()
+    })
+
+    this.version(10).stores({
+      categories: '++id, businessId, name, parentId',
     }).upgrade(() => {
       return Promise.resolve()
     })
@@ -390,11 +484,22 @@ export async function getProducts(): Promise<Product[]> {
 }
 
 export async function searchProducts(query: string): Promise<Product[]> {
+  const q = query.toLowerCase()
   return db.products
     .where('businessId')
     .equals(getCurrentBusinessId())
-    .filter(p => p.name.toLowerCase().includes(query.toLowerCase()))
+    .filter(p => p.name.toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q) || (p.qr || '').toLowerCase().includes(q) || (p.proveedor || '').toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q))
     .toArray()
+}
+
+export async function deleteProduct(productName: string): Promise<void> {
+  const businessId = getCurrentBusinessId()
+  const products = await db.products.where('businessId').equals(businessId).toArray()
+  const product = products.find(p => p.name.toLowerCase().trim() === productName.toLowerCase().trim())
+  if (product && product.id) {
+    await db.products.delete(product.id)
+  }
+  await db.inventory_adjustments.where({ businessId, productName }).delete()
 }
 
 // --- Transacciones ---
@@ -575,19 +680,36 @@ export async function getMonthlySummary(): Promise<FinancialSummary> {
 }
 
 export interface ProductStock {
+  id?: number
+  code?: string
+  qr?: string
   name: string
+  proveedor?: string
+  categoria?: string
   quantity: number
   totalProduced: number
   totalSold: number
+  totalPurchased: number
+  totalAdjusted: number
   lastPrice?: number
   pesoEntrada?: number
   pesoSalida?: number
   tiempo?: number
   notas?: string
+  cost?: number
+  unit?: string
+  pricingMode?: 'UNIT' | 'WEIGHT'
+  margin?: number
 }
 
 export async function getStockByProduct(): Promise<ProductStock[]> {
   const businessId = getCurrentBusinessId()
+  
+  const products = await db.products.where('businessId').equals(businessId).toArray()
+  const productIdMap = new Map<string, { id: number; cost?: number; price?: number; unit?: string; code?: string; qr?: string; proveedor?: string; categoria?: string; pricingMode?: string; margin?: number }>()
+  for (const p of products) {
+    productIdMap.set(p.name.toLowerCase(), { id: p.id!, cost: p.cost, price: p.price, unit: p.unidad, code: p.code, qr: p.qr, proveedor: p.proveedor, categoria: p.categoria, pricingMode: p.pricingMode, margin: p.margin })
+  }
   
   const transactions = await db.transactions
     .where('businessId')
@@ -596,12 +718,17 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
   
   const productionTxs = transactions.filter(t => t.type === 'produccion')
   const saleTxs = transactions.filter(t => t.type === 'venta')
+  const purchaseTxs = transactions.filter(t => t.type === 'compra')
   const allMeta = await db.transaction_meta.toArray()
   
   const stockMap = new Map<string, { 
+    id?: number;
     produced: number; 
-    sold: number; 
+    sold: number;
+    purchased: number;
+    adjusted: number;
     lastProductionPrice?: number;
+    lastSalePrice?: number;
     pesoEntrada?: number;
     pesoSalida?: number;
     tiempo?: number;
@@ -623,10 +750,14 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
     }
     
     for (const item of items) {
-      const current = stockMap.get(item.name) || { produced: 0, sold: 0 }
+      const current = stockMap.get(item.name) || { produced: 0, sold: 0, purchased: 0, adjusted: 0 }
+      const pinfo = productIdMap.get(item.name.toLowerCase())
       stockMap.set(item.name, {
+        id: pinfo?.id,
         produced: current.produced + item.quantity,
         sold: current.sold,
+        purchased: current.purchased,
+        adjusted: current.adjusted,
         lastProductionPrice: item.price,
         pesoEntrada: pesoEntrada || (current.pesoEntrada || 0),
         pesoSalida: pesoSalida || (current.pesoSalida || 0),
@@ -639,10 +770,35 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
   for (const tx of saleTxs) {
     const items = await db.transaction_items.where('transactionId').equals(tx.id!).toArray()
     for (const item of items) {
-      const current = stockMap.get(item.name) || { produced: 0, sold: 0 }
+      const current = stockMap.get(item.name) || { produced: 0, sold: 0, purchased: 0, adjusted: 0 }
+      const pinfo = productIdMap.get(item.name.toLowerCase())
       stockMap.set(item.name, {
+        id: pinfo?.id,
         produced: current.produced,
         sold: current.sold + item.quantity,
+        purchased: current.purchased,
+        adjusted: current.adjusted,
+        lastProductionPrice: current.lastProductionPrice,
+        lastSalePrice: item.price,
+        pesoEntrada: current.pesoEntrada || 0,
+        pesoSalida: current.pesoSalida || 0,
+        tiempo: current.tiempo || 0,
+        notas: current.notas || ''
+      })
+    }
+  }
+  
+  for (const tx of purchaseTxs) {
+    const items = await db.transaction_items.where('transactionId').equals(tx.id!).toArray()
+    for (const item of items) {
+      const current = stockMap.get(item.name) || { produced: 0, sold: 0, purchased: 0, adjusted: 0 }
+      const pinfo = productIdMap.get(item.name.toLowerCase())
+      stockMap.set(item.name, {
+        id: pinfo?.id,
+        produced: current.produced,
+        sold: current.sold,
+        purchased: current.purchased + item.quantity,
+        adjusted: current.adjusted,
         lastProductionPrice: current.lastProductionPrice,
         pesoEntrada: current.pesoEntrada || 0,
         pesoSalida: current.pesoSalida || 0,
@@ -652,17 +808,80 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
     }
   }
   
-  return Array.from(stockMap.entries()).map(([name, data]) => ({
-    name,
-    quantity: data.produced - data.sold,
-    totalProduced: data.produced,
-    totalSold: data.sold,
-    lastPrice: data.lastProductionPrice,
-    pesoEntrada: data.pesoEntrada,
-    pesoSalida: data.pesoSalida,
-    tiempo: data.tiempo,
-    notas: data.notas
-  }))
+  const adjustments = await db.inventory_adjustments.where('businessId').equals(businessId).toArray()
+  for (const adj of adjustments) {
+    const current = stockMap.get(adj.productName) || { produced: 0, sold: 0, purchased: 0, adjusted: 0 }
+    const pinfo = productIdMap.get(adj.productName.toLowerCase())
+    stockMap.set(adj.productName, {
+      id: pinfo?.id,
+      produced: current.produced,
+      sold: current.sold,
+      purchased: current.purchased,
+      adjusted: current.adjusted + adj.quantity,
+      lastProductionPrice: current.lastProductionPrice,
+      pesoEntrada: current.pesoEntrada || 0,
+      pesoSalida: current.pesoSalida || 0,
+      tiempo: current.tiempo || 0,
+      notas: current.notas || ''
+    })
+  }
+  
+  const result = Array.from(stockMap.entries()).map(([name, data]) => {
+    const pinfo = productIdMap.get(name.toLowerCase())
+    if (!pinfo) return null
+    return {
+      id: pinfo?.id,
+      code: pinfo?.code,
+      qr: pinfo?.qr,
+      proveedor: pinfo?.proveedor,
+      categoria: pinfo?.categoria,
+      name,
+      quantity: (data.produced || 0) + (data.purchased || 0) + (data.adjusted || 0) - (data.sold || 0),
+      totalProduced: data.produced || 0,
+      totalSold: data.sold || 0,
+      totalPurchased: data.purchased || 0,
+      totalAdjusted: data.adjusted || 0,
+      lastPrice: data.lastSalePrice ?? data.lastProductionPrice ?? pinfo?.price,
+      pesoEntrada: data.pesoEntrada,
+      pesoSalida: data.pesoSalida,
+      tiempo: data.tiempo,
+      notas: data.notas,
+      cost: pinfo?.cost,
+      unit: pinfo?.unit,
+      pricingMode: pinfo?.pricingMode as 'UNIT' | 'WEIGHT' | undefined,
+      margin: pinfo?.margin,
+    }
+  }).filter(Boolean) as ProductStock[]
+  
+  // Include products with no transactions at all (show their product.stock base value)
+  for (const p of products) {
+    if (!result.find(r => r.name.toLowerCase() === p.name.toLowerCase())) {
+      result.push({
+        id: p.id,
+        code: p.code,
+        qr: p.qr,
+        proveedor: p.proveedor,
+        categoria: p.categoria,
+        name: p.name,
+        quantity: p.stock || 0,
+        totalProduced: 0,
+        totalSold: 0,
+        totalPurchased: 0,
+        totalAdjusted: 0,
+        lastPrice: p.price,
+        cost: p.cost,
+        unit: p.unidad,
+        pricingMode: p.pricingMode,
+        margin: p.margin,
+        pesoEntrada: undefined,
+        pesoSalida: undefined,
+        tiempo: undefined,
+        notas: undefined,
+      })
+    }
+  }
+  
+  return result
 }
 
 export async function getProductStock(productName: string): Promise<number> {
@@ -892,7 +1111,7 @@ export async function openMesa(id: number): Promise<void> {
   await db.mesas.update(id, { status: 'abierta', orderItems: [], total: 0 })
 }
 
-export async function addToMesa(mesaId: number, item: { name: string; quantity: number; price: number; subtotal: number }): Promise<void> {
+export async function addToMesa(mesaId: number, item: { name: string; code?: string; quantity: number; price: number; subtotal: number }): Promise<void> {
   const mesa = await db.mesas.get(mesaId)
   if (!mesa) return
 
@@ -1031,6 +1250,90 @@ export async function adjustInventory(productName: string, quantity: number, rea
 export async function getInventoryAdjustments(): Promise<InventoryAdjustment[]> {
   const businessId = getCurrentBusinessId()
   return db.inventory_adjustments.where('businessId').equals(businessId).reverse().sortBy('date')
+}
+
+export interface InventoryHistoryEntry {
+  id: number
+  date: Date
+  type: 'compra' | 'venta' | 'produccion' | 'merma' | 'ajuste'
+  productName: string
+  code?: string
+  quantity: number
+  unit?: string
+  desc: string
+}
+
+export async function getInventoryHistory(): Promise<InventoryHistoryEntry[]> {
+  const businessId = getCurrentBusinessId()
+  const entries: InventoryHistoryEntry[] = []
+
+  // 1. Transaction items from ventas, compras, produccion
+  const transactions = await db.transactions.where('businessId').equals(businessId).toArray()
+  const txIds = transactions.map(t => t.id!)
+  if (txIds.length > 0) {
+    const items = await db.transaction_items.where('transactionId').anyOf(txIds).toArray()
+    for (const tx of transactions) {
+      const txItems = items.filter(i => i.transactionId === tx.id)
+      for (const item of txItems) {
+        if (tx.type === 'venta') {
+          const product = await db.products.where({ businessId, name: item.name }).first()
+          entries.push({
+            id: tx.id! * 1000 + (item.id || 0),
+            date: tx.date,
+            type: 'venta',
+            productName: item.name,
+            code: item.code || product?.code,
+            quantity: -item.quantity,
+            unit: item.unit || product?.unidad,
+            desc: `Venta #${tx.id}`,
+          })
+        } else if (tx.type === 'compra') {
+          const product = await db.products.where({ businessId, name: item.name }).first()
+          entries.push({
+            id: tx.id! * 1000 + (item.id || 0),
+            date: tx.date,
+            type: 'compra',
+            productName: item.name,
+            code: item.code || product?.code,
+            quantity: item.quantity,
+            unit: item.unit || product?.unidad,
+            desc: `Compra #${tx.id}`,
+          })
+        } else if (tx.type === 'produccion') {
+          const meta = await db.transaction_meta.where('transactionId').equals(tx.id!).toArray()
+          const metaMap = new Map(meta.map(m => [m.key, m.value]))
+          const isOutput = metaMap.get('peso_salida') !== undefined && item.name === (await db.products.get(item.productId!))?.name
+          entries.push({
+            id: tx.id! * 1000 + (item.id || 0),
+            date: tx.date,
+            type: 'produccion',
+            productName: item.name,
+            code: item.code,
+            quantity: isOutput ? item.quantity : -item.quantity,
+            unit: item.unit,
+            desc: isOutput ? 'Producción (salida)' : 'Producción (insumo)',
+          })
+        }
+      }
+    }
+  }
+
+  // 2. Inventory adjustments (manual)
+  const adjustments = await getInventoryAdjustments()
+  for (const adj of adjustments) {
+    entries.push({
+      id: adj.id!,
+      date: adj.date,
+      type: 'ajuste',
+      productName: adj.productName,
+      quantity: adj.quantity,
+      desc: adj.reason,
+    })
+  }
+
+  // Sort by date descending
+  entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  return entries
 }
 
 export function getInventoryMode(businessType: BusinessType): { showInventory: boolean; blockSales: boolean; allowNegative: boolean; label: string } {
@@ -1215,7 +1518,7 @@ export async function getFruverDashboard(): Promise<{
   ventasHoy: number
   mermaHoy: number
   gananciaHoy: number
-  productosCriticos: { name: string; stock: number; diasRestantes: number }[]
+  productosCriticos: { name: string; code?: string; stock: number; diasRestantes: number }[]
 }> {
   const businessId = getCurrentBusinessId()
   const today = new Date()
@@ -1240,7 +1543,7 @@ export async function getFruverDashboard(): Promise<{
       const fechaCompra = new Date(p.fechaCompra!)
       const fechaVencimiento = new Date(fechaCompra.getTime() + (p.diasVidaUtil || 0) * 86400000)
       const diasRestantes = Math.ceil((fechaVencimiento.getTime() - Date.now()) / 86400000)
-      return { name: p.name, stock: p.stock || 0, diasRestantes }
+      return { name: p.name, code: p.code, stock: p.stock || 0, diasRestantes }
     })
     .filter(p => p.diasRestantes <= 2)
     .sort((a, b) => a.diasRestantes - b.diasRestantes)
@@ -1287,9 +1590,15 @@ export async function getCustomers(): Promise<Customer[]> {
   return db.customers.where('businessId').equals(getCurrentBusinessId()).toArray()
 }
 
+export async function getActiveCustomers(): Promise<Customer[]> {
+  const businessId = getCurrentBusinessId()
+  const all = await db.customers.where('businessId').equals(businessId).toArray()
+  return all.filter(c => c.estado === 'activo')
+}
+
 export async function upsertCustomer(name: string, phone?: string): Promise<number> {
   const businessId = getCurrentBusinessId()
-  const existing = await db.customers.where({ businessId, phone }).first()
+  const existing = phone ? await db.customers.where({ businessId, phone }).first() : null
   if (existing) {
     await db.customers.update(existing.id!, { name, totalPurchases: (existing.totalPurchases || 0) + 1, lastPurchase: new Date() })
     return existing.id!
@@ -1298,24 +1607,144 @@ export async function upsertCustomer(name: string, phone?: string): Promise<numb
     businessId,
     name,
     phone,
+    estado: 'activo',
     totalPurchases: 1,
     lastPurchase: new Date(),
     createdAt: new Date(),
   })
 }
 
+export async function createCustomer(data: { name: string; documento?: string; phone?: string; email?: string; direccion?: string; notas?: string }): Promise<number> {
+  return db.customers.add({
+    businessId: getCurrentBusinessId(),
+    name: data.name,
+    documento: data.documento,
+    phone: data.phone,
+    email: data.email,
+    direccion: data.direccion,
+    notas: data.notas,
+    estado: 'activo',
+    totalPurchases: 0,
+    createdAt: new Date(),
+  })
+}
+
+export async function updateCustomer(id: number, data: Partial<Customer>): Promise<void> {
+  await db.customers.update(id, data)
+}
+
+export async function deactivateCustomer(id: number): Promise<void> {
+  await db.customers.update(id, { estado: 'inactivo' })
+}
+
+export async function searchCustomers(query: string): Promise<Customer[]> {
+  const businessId = getCurrentBusinessId()
+  const all = await db.customers.where('businessId').equals(businessId).toArray()
+  const q = query.toLowerCase()
+  return all.filter(c =>
+    c.name.toLowerCase().includes(q) ||
+    (c.documento || '').toLowerCase().includes(q) ||
+    (c.phone || '').toLowerCase().includes(q) ||
+    (c.email || '').toLowerCase().includes(q)
+  )
+}
+
+export async function getSuppliers(): Promise<Supplier[]> {
+  return db.suppliers.where('businessId').equals(getCurrentBusinessId()).toArray()
+}
+
+export async function getActiveSuppliers(): Promise<Supplier[]> {
+  const businessId = getCurrentBusinessId()
+  const all = await db.suppliers.where('businessId').equals(businessId).toArray()
+  return all.filter(s => s.estado === 'activo')
+}
+
+export async function createSupplier(data: { empresa: string; contacto?: string; phone?: string; email?: string; direccion?: string; notas?: string }): Promise<number> {
+  return db.suppliers.add({
+    businessId: getCurrentBusinessId(),
+    empresa: data.empresa,
+    contacto: data.contacto,
+    phone: data.phone,
+    email: data.email,
+    direccion: data.direccion,
+    notas: data.notas,
+    estado: 'activo',
+    totalPurchases: 0,
+    createdAt: new Date(),
+  })
+}
+
+export async function updateSupplier(id: number, data: Partial<Supplier>): Promise<void> {
+  await db.suppliers.update(id, data)
+}
+
+export async function deactivateSupplier(id: number): Promise<void> {
+  await db.suppliers.update(id, { estado: 'inactivo' })
+}
+
+export async function searchSuppliers(query: string): Promise<Supplier[]> {
+  const businessId = getCurrentBusinessId()
+  const all = await db.suppliers.where('businessId').equals(businessId).toArray()
+  const q = query.toLowerCase()
+  return all.filter(s =>
+    s.empresa.toLowerCase().includes(q) ||
+    (s.contacto || '').toLowerCase().includes(q) ||
+    (s.phone || '').toLowerCase().includes(q) ||
+    (s.email || '').toLowerCase().includes(q)
+  )
+}
+
+export async function getCategories(): Promise<Category[]> {
+  return db.categories.where('businessId').equals(getCurrentBusinessId()).toArray()
+}
+
+export async function getCategoryTree(): Promise<Category[]> {
+  const all = await getCategories()
+  return all.sort((a, b) => (a.parentId || 0) - (b.parentId || 0) || a.name.localeCompare(b.name))
+}
+
+export async function createCategory(name: string, parentId?: number): Promise<number> {
+  return db.categories.add({
+    businessId: getCurrentBusinessId(),
+    name,
+    parentId,
+    createdAt: new Date(),
+  })
+}
+
+export async function updateCategory(id: number, data: Partial<Category>): Promise<void> {
+  await db.categories.update(id, data)
+}
+
+export async function deleteCategory(id: number): Promise<void> {
+  const children = await db.categories.where('parentId').equals(id).toArray()
+  for (const child of children) {
+    await db.categories.update(child.id!, { parentId: undefined })
+  }
+  await db.categories.delete(id)
+  const products = await db.products.where('businessId').equals(getCurrentBusinessId()).toArray()
+  const cat = await db.categories.get(id)
+  if (cat) {
+    for (const p of products) {
+      if (p.categoria === cat.name) {
+        await db.products.update(p.id!, { categoria: undefined })
+      }
+    }
+  }
+}
+
 export async function sendWhatsAppReceipt(phone: string, product: string, total: number): Promise<void> {
   const msg = `Hola! Tu compra en LionCore:%0AProducto: ${product}%0ATotal: $${total.toLocaleString('es-CO')}%0A¡Gracias por tu compra!`
   const cleanPhone = phone.replace(/[^0-9]/g, '')
   const fullPhone = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`
-  window.open(`https://wa.me/${fullPhone}?text=${msg}`, '_blank')
+  window.open(`https://api.whatsapp.com/send?phone=${fullPhone}&text=${msg}`, '_blank')
 }
 
 export async function sendWhatsAppLicense(phone: string, product: string, key: string): Promise<void> {
   const msg = `Hola! Tu licencia:%0AProducto: ${product}%0AClave: ${key}%0A¡Gracias por tu compra!`
   const cleanPhone = phone.replace(/[^0-9]/g, '')
   const fullPhone = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`
-  window.open(`https://wa.me/${fullPhone}?text=${msg}`, '_blank')
+  window.open(`https://api.whatsapp.com/send?phone=${fullPhone}&text=${msg}`, '_blank')
 }
 
 // ==================== BODEGAS ====================
