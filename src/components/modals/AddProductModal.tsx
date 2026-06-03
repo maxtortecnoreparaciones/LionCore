@@ -1,4 +1,4 @@
-import { PRODUCT_UNITS, isWeightUnit } from '../../services/db'
+import { PRODUCT_UNITS, isWeightUnit, getUnitLabel } from '../../services/db'
 
 interface AddProductModalProps {
   show: boolean
@@ -8,12 +8,18 @@ interface AddProductModalProps {
   newProductStock: string
   newProductUnit: string
   newProductPricingMode: string
+  newProductProveedor: string
+  newProductCategoria: string
+  newProductMargin: string
   onNameChange: (v: string) => void
   onPriceChange: (v: string) => void
   onCostChange: (v: string) => void
   onStockChange: (v: string) => void
   onUnitChange: (v: string) => void
-  onPricingModeChange?: (v: string) => void
+  onPricingModeChange: (v: string) => void
+  onProveedorChange: (v: string) => void
+  onCategoriaChange: (v: string) => void
+  onMarginChange: (v: string) => void
   onSave: () => void
   onClose: () => void
 }
@@ -25,11 +31,18 @@ export default function AddProductModal({
   newProductStock,
   newProductUnit,
   newProductPricingMode,
+  newProductProveedor,
+  newProductCategoria,
+  newProductMargin,
   onNameChange,
   onPriceChange,
   onCostChange,
   onStockChange,
   onUnitChange,
+  onPricingModeChange,
+  onProveedorChange,
+  onCategoriaChange,
+  onMarginChange,
   onSave,
   onClose,
 }: AddProductModalProps) {
@@ -73,7 +86,7 @@ export default function AddProductModal({
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-base"
                 >
                   {PRODUCT_UNITS.map(u => (
-                    <option key={u} value={u}>{u}</option>
+                    <option key={u} value={u}>{getUnitLabel(u)}</option>
                   ))}
                 </select>
               </div>
@@ -86,6 +99,58 @@ export default function AddProductModal({
                   placeholder="$0"
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
                 />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor</label>
+                <input
+                  type="text"
+                  value={newProductProveedor}
+                  onChange={e => onProveedorChange(e.target.value)}
+                  placeholder="Opcional"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                <input
+                  type="text"
+                  value={newProductCategoria}
+                  onChange={e => onCategoriaChange(e.target.value)}
+                  placeholder="Opcional"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Modo precio</label>
+                <select
+                  value={newProductPricingMode}
+                  onChange={e => onPricingModeChange(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-base"
+                >
+                  <option value="UNIT">Unidad</option>
+                  <option value="WEIGHT">Por peso (kg)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Margen %</label>
+                <input
+                  type="number"
+                  value={newProductMargin}
+                  onChange={e => onMarginChange(e.target.value)}
+                  placeholder="100"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
+                />
+                {newProductPricingMode === 'WEIGHT' && costPerUnit > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    → ${(costPerUnit * (1 + Number(newProductMargin || 0) / 100)).toFixed(0)}/kg
+                  </p>
+                )}
               </div>
             </div>
 

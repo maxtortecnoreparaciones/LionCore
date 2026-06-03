@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Customer, createCustomer, updateCustomer, deactivateCustomer, searchCustomers, getActiveCustomers } from '../../services/db'
+import { formatDate } from '../../utils/format'
 
 interface CustomersViewProps {
   show: boolean
@@ -126,7 +127,9 @@ export default function CustomersView({ show }: CustomersViewProps) {
                     {c.email && <span className="ml-3">✉️ {c.email}</span>}
                     {c.totalPurchases > 0 && <span className="ml-3">🛒 {c.totalPurchases} compras</span>}
                   </p>
+                  {c.direccion && <p className="text-xs text-gray-400 mt-0.5">📍 {c.direccion}</p>}
                   {c.notas && <p className="text-xs text-gray-400 mt-0.5">📝 {c.notas}</p>}
+                  {c.lastPurchase && <p className="text-xs text-gray-400 mt-0.5">🕐 Última compra: {formatDate(c.lastPurchase)}</p>}
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <button onClick={() => handleEdit(c)} className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded" title="Editar">✏️</button>

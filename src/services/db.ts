@@ -7,6 +7,22 @@ export type BusinessType = 'pos' | 'deshidratados' | 'restaurante' | 'fruver' | 
 export const PRODUCT_UNITS = ['kg', 'g', 'lb', 'L', 'mL', 'unidad', 'paquete', 'caja', 'bandeja'] as const
 export type ProductUnit = typeof PRODUCT_UNITS[number]
 
+export const PRODUCT_UNIT_LABELS: Record<string, string> = {
+  kg: 'kg (kilogramo)',
+  g: 'g (gramo)',
+  lb: 'lb (libra)',
+  L: 'L (litro)',
+  mL: 'mL (mililitro)',
+  unidad: 'unidad',
+  paquete: 'paquete',
+  caja: 'caja',
+  bandeja: 'bandeja',
+}
+
+export function getUnitLabel(unit: string): string {
+  return PRODUCT_UNIT_LABELS[unit] || unit
+}
+
 export function isWeightUnit(unit: string): boolean {
   return ['kg', 'g', 'lb'].includes(unit)
 }
@@ -232,6 +248,92 @@ export interface Category {
   createdAt: Date
 }
 
+export interface ProductionProcess {
+  id?: number
+  businessId: number
+  name: string
+  type: 'produccion' | 'calidad' | 'empaque' | 'otro'
+  requiresTime: boolean
+  requiresWeight: boolean
+  sortOrder: number
+  active: boolean
+  createdAt: Date
+}
+
+export interface ProductionBatch {
+  id?: number
+  businessId: number
+  loteId: string
+  rawMaterialName: string
+  rawMaterialId?: number
+  rawMaterialQty: number
+  costoEntrada?: number
+  unit: string
+  status: 'pendiente' | 'en_proceso' | 'completado' | 'cancelado'
+  createdAt: Date
+  completedAt?: Date
+  notes?: string
+  // Avatar quality data
+  avatarHumedad?: number
+  avatarTemperatura?: number
+  avatarTiempoHoras?: number
+  avatarGrado?: string
+}
+export interface ProductionBatchRun {
+  id?: number
+  batchId: number
+  nombre: string
+  cantidadEntrada: number
+  estado: 'pendiente' | 'activo' | 'completado' | 'cancelado'
+  recursoAsignado?: string
+  recursoId?: number
+  fechaInicio?: Date
+  fechaFin?: Date
+  observaciones?: string
+  createdAt: Date
+}
+
+export interface BatchProduct {
+  id?: number
+  batchId: number
+  finalProductId?: number
+  finalProductName: string
+  finalProductQty: number
+  wasteQty: number
+  rendimiento: number
+  costoUnitario: number
+}
+
+export interface BatchStepLog {
+  id?: number
+  batchId: number
+  runId: number
+  processId: number
+  processName: string
+  status: 'pendiente' | 'en_progreso' | 'completado'
+  startTime?: Date
+  endTime?: Date
+  weightIn?: number
+  weightOut?: number
+  wasteQty?: number
+  observations?: string
+  operatorId?: number
+  resourceId?: number
+  resourceName?: string
+  sortOrder: number
+}
+
+export interface ProductionResource {
+  id?: number
+  businessId: number
+  name: string
+  type: 'HORNO' | 'OPERARIO' | 'AREA' | 'MESA' | 'OTRO'
+  capacity?: number
+  estado: 'activo' | 'inactivo'
+  notas?: string
+  createdAt: Date
+}
+
 export interface Production {
   id?: number
   businessId: number
@@ -247,6 +349,10 @@ export interface Production {
   costoUnitario: number
   date: Date
   notes?: string
+  avatarHumedad?: number
+  avatarTemperatura?: number
+  avatarTiempoHoras?: number
+  avatarGrado?: string
 }
 
 export interface InventoryAdjustment {
@@ -321,6 +427,12 @@ class LionCoreDB extends Dexie {
   categories!: Table<Category, number>
   warehouses!: Table<Warehouse, number>
   warehouse_stock!: Table<WarehouseStock, number>
+  production_processes!: Table<ProductionProcess, number>
+  production_batches!: Table<ProductionBatch, number>
+  batch_step_logs!: Table<BatchStepLog, number>
+  production_resources!: Table<ProductionResource, number>
+  batch_products!: Table<BatchProduct, number>
+  production_batch_runs!: Table<ProductionBatchRun, number>
 
   constructor() {
     super('LionCoreDB')
@@ -382,6 +494,99 @@ class LionCoreDB extends Dexie {
       categories: '++id, businessId, name, parentId',
     }).upgrade(() => {
       return Promise.resolve()
+    })
+
+    this.version(11).stores({
+      production_processes: '++id, businessId, active, sortOrder',
+      production_batches: '++id, businessId, productName, status',
+      batch_step_logs: '++id, batchId, processId, status, sortOrder',
+      production_resources: '++id, businessId, type, estado',
+    }).upgrade(() => {
+      return Promise.resolve()
+    })
+
+    this.version(12).stores({
+      production_processes: '++id, businessId, active, sortOrder',
+      production_batches: '++id, businessId, loteId, status, rawMaterialName, finalProductName, createdAt',
+      batch_step_logs: '++id, batchId, processId, status, sortOrder',
+      production_resources: '++id, businessId, type, estado',
+    }).upgrade(async () => {
+      const batches = await db.table('production_batches').toArray()
+      for (const b of batches) {
+        const old = b as any
+        await db.table('production_batches').update(old.id, {
+          loteId: old.loteId || `L-${Date.now().toString(36).toUpperCase()}`,
+          rawMaterialName: old.rawMaterialName || old.productName || 'Sin definir',
+          rawMaterialQty: old.rawMaterialQty || old.totalWeight || 0,
+          status: old.status === 'activo' ? 'en_proceso' : (old.status || 'pendiente'),
+        })
+      }
+    })
+
+    this.version(13).stores({
+      production_processes: '++id, businessId, active, sortOrder',
+      production_batches: '++id, businessId, loteId, status, rawMaterialName, createdAt',
+      batch_step_logs: '++id, batchId, processId, status, sortOrder',
+      production_resources: '++id, businessId, type, estado',
+      batch_products: '++id, batchId',
+    }).upgrade(async () => {
+      // Migrar output fields de batch a batch_products
+      const batches = await db.table('production_batches').toArray()
+      for (const b of batches) {
+        const old = b as any
+        if (old.finalProductName) {
+          await db.table('batch_products').add({
+            batchId: old.id,
+            finalProductId: old.finalProductId,
+            finalProductName: old.finalProductName,
+            finalProductQty: old.finalProductQty || 0,
+            wasteQty: old.wasteQty || 0,
+            rendimiento: old.rendimiento || 0,
+            costoUnitario: old.costoUnitario || 0,
+          })
+        }
+      }
+    })
+
+    this.version(14).stores({
+      production_processes: '++id, businessId, active, sortOrder',
+      production_batches: '++id, businessId, loteId, status, rawMaterialName, createdAt',
+      batch_step_logs: '++id, batchId, runId, processId, status, sortOrder',
+      production_resources: '++id, businessId, type, estado',
+      batch_products: '++id, batchId',
+    }).upgrade(async () => {
+      const logs = await db.table('batch_step_logs').toArray()
+      for (const log of logs) {
+        await db.table('batch_step_logs').update(log.id!, { runId: 1 })
+      }
+    })
+
+    this.version(15).stores({
+      production_processes: '++id, businessId, active, sortOrder',
+      production_batches: '++id, businessId, loteId, status, rawMaterialName, createdAt',
+      batch_step_logs: '++id, batchId, runId, processId, status, sortOrder',
+      production_resources: '++id, businessId, type, estado',
+      batch_products: '++id, batchId',
+      production_batch_runs: '++id, batchId, estado, createdAt',
+    }).upgrade(async () => {
+      // Crear ProductionBatchRun default para batches existentes con steps
+      const batches = await db.table('production_batches').toArray()
+      for (const b of batches) {
+        const steps = await db.table('batch_step_logs').where('batchId').equals(b.id!).toArray()
+        if (steps.length > 0) {
+          const runId = steps[0].runId || 1
+          const existingRun = await db.table('production_batch_runs').where({ batchId: b.id!, nombre: `Tanda ${runId}` }).first()
+          if (!existingRun) {
+            await db.table('production_batch_runs').add({
+              batchId: b.id!,
+              nombre: `Tanda ${runId}`,
+              cantidadEntrada: b.rawMaterialQty || 0,
+              estado: b.status === 'completado' ? 'completado' : (b.status === 'en_proceso' ? 'activo' : 'pendiente'),
+              createdAt: new Date(),
+            })
+          }
+        }
+      }
     })
   }
 }
@@ -890,6 +1095,30 @@ export async function getProductStock(productName: string): Promise<number> {
   return product?.quantity || 0
 }
 
+export async function getFrequentProducts(limit: number = 20): Promise<ProductStock[]> {
+  const businessId = getCurrentBusinessId()
+  const allStock = await getStockByProduct()
+  const saleTxs = await db.transactions.where('businessId').equals(businessId).filter(t => t.type === 'venta').toArray()
+  const freqMap = new Map<string, number>()
+  for (const tx of saleTxs) {
+    const items = await db.transaction_items.where('transactionId').equals(tx.id!).toArray()
+    const seen = new Set<string>()
+    for (const item of items) {
+      const key = item.name.toLowerCase()
+      if (!seen.has(key)) {
+        seen.add(key)
+        freqMap.set(key, (freqMap.get(key) || 0) + 1)
+      }
+    }
+  }
+  const sorted = [...freqMap.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([name]) => allStock.find(s => s.name.toLowerCase() === name))
+    .filter(Boolean) as ProductStock[]
+  return sorted
+}
+
 export async function updateProductSuggestedPrice(productName: string, newPrice: number): Promise<void> {
   const businessId = getCurrentBusinessId()
   
@@ -1363,67 +1592,79 @@ export async function createProduction(
   notes?: string
 ): Promise<number> {
   const businessId = getCurrentBusinessId()
-  const rawMaterial = await db.products.get(rawMaterialId)
-  const finalProduct = await db.products.get(finalProductId)
-  
-  if (!rawMaterial || !finalProduct) {
-    throw new Error('Producto no encontrado')
+  const outputs = [{ finalProductId, finalProductQty }]
+  const batchId = await createUnifiedBatch(rawMaterialId, rawMaterialQty, outputs, notes)
+  await startUnifiedBatch(batchId)
+  await completeUnifiedBatch(batchId)
+
+  // Duplicar en productions (v5) para compatibilidad
+  const batch = await db.production_batches.get(batchId)
+  const bp = batch ? (await db.batch_products.where('batchId').equals(batchId).first()) : null
+  if (batch && bp) {
+    await db.productions.add({
+      businessId,
+      loteId: batch.loteId,
+      rawMaterialName: batch.rawMaterialName,
+      rawMaterialId: batch.rawMaterialId,
+      rawMaterialQty: batch.rawMaterialQty,
+      finalProductName: bp.finalProductName,
+      finalProductId: bp.finalProductId,
+      finalProductQty: bp.finalProductQty,
+      wasteQty: bp.wasteQty,
+      rendimiento: bp.rendimiento,
+      costoUnitario: bp.costoUnitario,
+      date: batch.createdAt,
+      notes: batch.notes,
+    })
   }
 
-  const loteId = `L-${Date.now().toString(36).toUpperCase()}`
-  const wasteQty = rawMaterialQty - finalProductQty
-  const rendimiento = rawMaterialQty > 0 ? (finalProductQty / rawMaterialQty) * 100 : 0
-  const totalCost = (rawMaterial.cost || 0) * rawMaterialQty
-  const costoUnitario = finalProductQty > 0 ? totalCost / finalProductQty : 0
-
-  const productionId = await db.productions.add({
-    businessId,
-    loteId,
-    rawMaterialName: rawMaterial.name,
-    rawMaterialId,
-    rawMaterialQty,
-    finalProductName: finalProduct.name,
-    finalProductId,
-    finalProductQty,
-    wasteQty,
-    rendimiento,
-    costoUnitario,
-    date: new Date(),
-    notes,
-  })
-
-  // Descontar materia prima
-  const newRawStock = (rawMaterial.stock || 0) - rawMaterialQty
-  await db.products.update(rawMaterialId, { stock: newRawStock })
-
-  // Sumar producto final
-  const newFinalStock = (finalProduct.stock || 0) + finalProductQty
-  await db.products.update(finalProductId, { stock: newFinalStock, cost: costoUnitario })
-
-  // Registrar transaccion de produccion
-  const txId = await db.transactions.add({
-    businessId,
-    type: 'produccion',
-    total: totalCost,
-    date: new Date(),
-  })
-
-  await db.transaction_items.add({
-    transactionId: txId,
-    productId: finalProductId,
-    name: `${finalProduct.name} (Lote ${loteId})`,
-    quantity: finalProductQty,
-    price: costoUnitario,
-    subtotal: totalCost,
-    costUnitario: costoUnitario,
-  })
-
-  return productionId
+  return batchId
 }
 
 export async function getProductions(): Promise<Production[]> {
   const businessId = getCurrentBusinessId()
-  return db.productions.where('businessId').equals(businessId).reverse().sortBy('date')
+  // Unificar datos historicos (productions v5) con batches completados
+  const oldProductions = await db.productions.where('businessId').equals(businessId).reverse().sortBy('date')
+  const completedBatches = await db.production_batches
+    .where('businessId').equals(businessId)
+    .filter(b => b.status === 'completado')
+    .toArray()
+
+  // Convertir batches a formato Production para compatibilidad (usa batch_products)
+  const batchProductions: Production[] = []
+  for (const b of completedBatches) {
+    const products = await db.batch_products.where('batchId').equals(b.id!).toArray()
+    for (const bp of products) {
+      batchProductions.push({
+        businessId: b.businessId,
+        loteId: b.loteId,
+        rawMaterialName: b.rawMaterialName,
+        rawMaterialId: b.rawMaterialId,
+        rawMaterialQty: b.rawMaterialQty,
+        finalProductName: bp.finalProductName,
+        finalProductId: bp.finalProductId,
+        finalProductQty: bp.finalProductQty,
+        wasteQty: bp.wasteQty,
+        rendimiento: bp.rendimiento,
+        costoUnitario: bp.costoUnitario,
+        date: b.createdAt,
+        notes: b.notes,
+        avatarHumedad: b.avatarHumedad,
+        avatarTemperatura: b.avatarTemperatura,
+        avatarTiempoHoras: b.avatarTiempoHoras,
+        avatarGrado: b.avatarGrado,
+      })
+    }
+  }
+
+  // Combinar y deduplicar por loteId
+  const seen = new Set<string>()
+  const all = [...oldProductions, ...batchProductions].filter(p => {
+    if (seen.has(p.loteId)) return false
+    seen.add(p.loteId)
+    return true
+  })
+  return all.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 }
 
 export async function getProductionDashboard(): Promise<{
@@ -1842,4 +2083,346 @@ export async function transferStock(fromWarehouseId: number, toWarehouseId: numb
       lastUpdated: new Date(),
     })
   }
+}
+
+// ==================== PROCESOS (Issue #221) ====================
+
+export async function getProductionProcesses(): Promise<ProductionProcess[]> {
+  const businessId = getCurrentBusinessId()
+  return db.production_processes
+    .where('businessId')
+    .equals(businessId)
+    .sortBy('sortOrder')
+}
+
+export async function createProductionProcess(data: Omit<ProductionProcess, 'id' | 'businessId' | 'createdAt' | 'sortOrder'>): Promise<number> {
+  const businessId = getCurrentBusinessId()
+  const count = await db.production_processes
+    .where('businessId').equals(businessId)
+    .count()
+  return db.production_processes.add({
+    ...data,
+    businessId,
+    createdAt: new Date(),
+    sortOrder: count,
+  })
+}
+
+export async function updateProductionProcess(id: number, data: Partial<ProductionProcess>): Promise<void> {
+  await db.production_processes.update(id, data)
+}
+
+export async function deleteProductionProcess(id: number): Promise<void> {
+  await db.production_processes.delete(id)
+}
+
+export async function reorderProductionProcesses(ids: number[]): Promise<void> {
+  for (let i = 0; i < ids.length; i++) {
+    await db.production_processes.update(ids[i], { sortOrder: i })
+  }
+}
+
+// ==================== LOTES / BATCHES UNIFICADOS (Issue #249) ====================
+
+export type BatchOutputInput = {
+  finalProductId: number
+  finalProductQty: number
+}
+
+export async function createUnifiedBatch(
+  rawMaterialId: number,
+  rawMaterialQty: number,
+  outputs: BatchOutputInput[],
+  notes?: string,
+  avatar?: { humedad?: number; temperatura?: number; tiempoHoras?: number; grado?: string },
+  costoEntrada?: number,
+): Promise<number> {
+  const businessId = getCurrentBusinessId()
+  const rawMaterial = await db.products.get(rawMaterialId)
+  if (!rawMaterial) throw new Error('Materia prima no encontrada')
+  if (outputs.length === 0) throw new Error('Debe tener al menos un producto final')
+
+  const loteId = generateLoteId()
+  const unit = rawMaterial.unidad || 'unidad'
+  const cost = costoEntrada !== undefined ? costoEntrada : (rawMaterial.cost || 0) * rawMaterialQty
+
+  const batchId = await db.production_batches.add({
+    businessId,
+    loteId,
+    rawMaterialName: rawMaterial.name,
+    rawMaterialId,
+    rawMaterialQty,
+    costoEntrada: cost,
+    unit,
+    status: 'pendiente',
+    createdAt: new Date(),
+    notes,
+    avatarHumedad: avatar?.humedad,
+    avatarTemperatura: avatar?.temperatura,
+    avatarTiempoHoras: avatar?.tiempoHoras,
+    avatarGrado: avatar?.grado,
+  })
+
+  // Crear producto de salida
+  for (const out of outputs) {
+    const fp = await db.products.get(out.finalProductId)
+    const name = fp?.name || 'Producto'
+    await db.batch_products.add({
+      batchId,
+      finalProductId: out.finalProductId,
+      finalProductName: name,
+      finalProductQty: out.finalProductQty,
+      wasteQty: 0,
+      rendimiento: 0,
+      costoUnitario: 0,
+    })
+  }
+
+  // Crear Tanda 1 (default)
+  const tandaId = await db.production_batch_runs.add({
+    batchId,
+    nombre: 'Tanda 1',
+    cantidadEntrada: rawMaterialQty,
+    estado: 'activo',
+    createdAt: new Date(),
+  })
+
+  // Auto-crear steps para la tanda desde procesos activos
+  const processes = await db.production_processes
+    .where('businessId').equals(businessId)
+    .filter(p => p.active)
+    .sortBy('sortOrder')
+  for (let i = 0; i < processes.length; i++) {
+    await db.batch_step_logs.add({
+      batchId,
+      runId: tandaId,
+      processId: processes[i].id!,
+      processName: processes[i].name,
+      status: 'pendiente',
+      sortOrder: i,
+    })
+  }
+
+  return batchId
+}
+
+export async function startUnifiedBatch(batchId: number): Promise<void> {
+  await db.production_batches.update(batchId, { status: 'en_proceso' })
+}
+
+export async function getBatchProducts(batchId: number): Promise<BatchProduct[]> {
+  return db.batch_products.where('batchId').equals(batchId).toArray()
+}
+
+export async function completeUnifiedBatch(batchId: number): Promise<void> {
+  const batch = await db.production_batches.get(batchId)
+  if (!batch) throw new Error('Lote no encontrado')
+
+  const rawMaterial = batch.rawMaterialId ? await db.products.get(batch.rawMaterialId) : null
+  const totalRawCost = batch.costoEntrada || (rawMaterial?.cost || 0) * batch.rawMaterialQty
+
+  // Calcular proporciones para cada producto final
+  const batchProducts = await db.batch_products.where('batchId').equals(batchId).toArray()
+  const totalFinalQty = batchProducts.reduce((s, p) => s + p.finalProductQty, 0)
+
+  // Transformar inventario para cada producto final
+  for (const bp of batchProducts) {
+    const finalProduct = bp.finalProductId ? await db.products.get(bp.finalProductId) : null
+    if (!finalProduct) continue
+
+    const wasteQty = batch.rawMaterialQty > 0
+      ? Math.max(0, (bp.finalProductQty / totalFinalQty) * batch.rawMaterialQty - bp.finalProductQty)
+      : 0
+    const rendimiento = bp.finalProductQty > 0 && batch.rawMaterialQty > 0
+      ? (bp.finalProductQty / batch.rawMaterialQty) * 100
+      : 0
+    const share = totalFinalQty > 0 ? bp.finalProductQty / totalFinalQty : 1 / batchProducts.length
+    const costoUnitario = bp.finalProductQty > 0 ? (totalRawCost * share) / bp.finalProductQty : 0
+
+    // Actualizar batch_products
+    await db.batch_products.update(bp.id!, { wasteQty, rendimiento, costoUnitario })
+
+    // Sumar al inventario
+    const newStock = (finalProduct.stock || 0) + bp.finalProductQty
+    await db.products.update(bp.finalProductId!, { stock: newStock, cost: costoUnitario })
+  }
+
+  // Descontar materia prima
+  if (rawMaterial) {
+    const newRawStock = (rawMaterial.stock || 0) - batch.rawMaterialQty
+    await db.products.update(batch.rawMaterialId!, { stock: Math.max(0, newRawStock) })
+  }
+
+  // Actualizar batch
+  await db.production_batches.update(batchId, {
+    status: 'completado',
+    completedAt: new Date(),
+  })
+
+  // Registrar transaccion de produccion
+  const txId = await db.transactions.add({
+    businessId: batch.businessId,
+    type: 'produccion',
+    total: totalRawCost,
+    date: new Date(),
+  })
+  for (const bp of batchProducts) {
+    await db.transaction_items.add({
+      transactionId: txId,
+      productId: bp.finalProductId,
+      name: `${bp.finalProductName} (${batch.loteId})`,
+      quantity: bp.finalProductQty,
+      price: bp.costoUnitario,
+      subtotal: bp.costoUnitario * bp.finalProductQty,
+      costUnitario: bp.costoUnitario,
+    })
+  }
+
+  // Registrar ajuste de inventario
+  await db.inventory_adjustments.add({
+    businessId: batch.businessId,
+    productName: `Produccion ${batch.loteId}`,
+    quantity: 0,
+    reason: `transformacion_lote_${batch.loteId}`,
+    date: new Date(),
+  })
+}
+
+export async function cancelUnifiedBatch(batchId: number): Promise<void> {
+  await db.production_batches.update(batchId, { status: 'cancelado' })
+}
+
+export async function getProductionBatches(): Promise<ProductionBatch[]> {
+  const businessId = getCurrentBusinessId()
+  return db.production_batches
+    .where('businessId')
+    .equals(businessId)
+    .reverse()
+    .sortBy('id')
+}
+
+export async function getBatchById(batchId: number): Promise<ProductionBatch | undefined> {
+  return db.production_batches.get(batchId)
+}
+
+export async function updateProductionBatch(id: number, data: Partial<ProductionBatch>): Promise<void> {
+  await db.production_batches.update(id, data)
+}
+
+// Mantener alias para compatibilidad
+export async function createProductionBatch(/* deprecated */): Promise<number> {
+  throw new Error('Usar createUnifiedBatch en su lugar')
+}
+
+// ==================== STEP LOGS (Issue #221) ====================
+
+export async function getBatchSteps(batchId: number): Promise<BatchStepLog[]> {
+  return db.batch_step_logs
+    .where('batchId')
+    .equals(batchId)
+    .sortBy('sortOrder')
+}
+
+export async function startBatchStep(stepId: number, data?: { weightIn?: number; operatorId?: number; resourceId?: number; resourceName?: string }): Promise<void> {
+  await db.batch_step_logs.update(stepId, {
+    ...data,
+    status: 'en_progreso',
+    startTime: new Date(),
+  })
+}
+
+export async function completeBatchStep(stepId: number, data: { weightIn?: number; weightOut?: number; observations?: string; operatorId?: number; resourceId?: number; resourceName?: string }): Promise<void> {
+  const updateData: any = {
+    ...data,
+    status: 'completado',
+    endTime: new Date(),
+  }
+  // Auto-calc waste when both weights provided
+  if (data.weightIn !== undefined && data.weightOut !== undefined) {
+    updateData.wasteQty = Math.max(0, data.weightIn - data.weightOut)
+  }
+  await db.batch_step_logs.update(stepId, updateData)
+}
+
+export async function getBatchRuns(batchId: number): Promise<ProductionBatchRun[]> {
+  return db.production_batch_runs
+    .where('batchId').equals(batchId)
+    .sortBy('createdAt')
+}
+
+export async function createBatchRun(batchId: number, cantidadEntrada: number, recursoId?: number, recursoName?: string): Promise<number> {
+  const batch = await db.production_batches.get(batchId)
+  if (!batch) throw new Error('Lote no encontrado')
+
+  const existingRuns = await db.production_batch_runs.where('batchId').equals(batchId).toArray()
+  const tandaNum = existingRuns.length + 1
+
+  const runId = await db.production_batch_runs.add({
+    batchId,
+    nombre: `Tanda ${tandaNum}`,
+    cantidadEntrada,
+    estado: 'activo',
+    recursoId,
+    recursoAsignado: recursoName,
+    createdAt: new Date(),
+  })
+
+  // Auto-crear steps para esta tanda desde procesos activos
+  const processes = await db.production_processes
+    .where('businessId').equals(batch.businessId)
+    .filter(p => p.active)
+    .sortBy('sortOrder')
+  for (let i = 0; i < processes.length; i++) {
+    await db.batch_step_logs.add({
+      batchId,
+      runId,
+      processId: processes[i].id!,
+      processName: processes[i].name,
+      status: 'pendiente',
+      sortOrder: i,
+    })
+  }
+  return runId
+}
+
+export async function completeBatchRun(runId: number): Promise<void> {
+  await db.production_batch_runs.update(runId, {
+    estado: 'completado',
+    fechaFin: new Date(),
+  })
+}
+
+// ==================== RECURSOS (Issue #222) ====================
+
+export const RESOURCE_TYPES = ['HORNO', 'OPERARIO', 'AREA', 'MESA', 'OTRO'] as const
+export type ResourceType = typeof RESOURCE_TYPES[number]
+
+export async function getResources(type?: ResourceType): Promise<ProductionResource[]> {
+  const businessId = getCurrentBusinessId()
+  let collection = db.production_resources.where('businessId').equals(businessId)
+  if (type) {
+    collection = collection.and(r => r.type === type) as any
+  }
+  return collection.toArray()
+}
+
+export async function getActiveResources(type?: ResourceType): Promise<ProductionResource[]> {
+  const all = await getResources(type)
+  return all.filter(r => r.estado === 'activo')
+}
+
+export async function createResource(data: Omit<ProductionResource, 'id' | 'businessId' | 'createdAt'>): Promise<number> {
+  return db.production_resources.add({
+    ...data,
+    businessId: getCurrentBusinessId(),
+    createdAt: new Date(),
+  })
+}
+
+export async function updateResource(id: number, data: Partial<ProductionResource>): Promise<void> {
+  await db.production_resources.update(id, data)
+}
+
+export async function deactivateResource(id: number): Promise<void> {
+  await db.production_resources.update(id, { estado: 'inactivo' })
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { formatCOP } from '../../utils/format'
+import { getUnitLabel } from '../../services/db'
 
 interface InventoryItem {
   id?: number
@@ -139,6 +140,8 @@ export default function InventoryView(props: InventoryViewProps) {
               <tr>
                 <th className="py-2 px-2 text-left">Código</th>
                 <th className="py-2 px-2 text-left">Producto</th>
+                <th className="py-2 px-2 text-left">Categoría</th>
+                <th className="py-2 px-2 text-left">Proveedor</th>
                 <th className="py-2 px-2 text-right">Stock</th>
                 <th className="py-2 px-2 text-right">Unidad</th>
                 <th className="py-2 px-2 text-right">Costo</th>
@@ -154,10 +157,12 @@ export default function InventoryView(props: InventoryViewProps) {
                   <tr key={index} className={`border-t border-gray-100 border-l-4 ${qtyBorderClass(item.quantity)}`}>
                     <td className="py-1.5 px-2 font-mono text-gray-500">{item.code || '—'}</td>
                     <td className="py-1.5 px-2 font-medium text-gray-800">{item.name}</td>
+                    <td className="py-1.5 px-2 text-left text-gray-500 text-[10px]">{item.categoria || '—'}</td>
+                    <td className="py-1.5 px-2 text-left text-gray-500 text-[10px]">{item.proveedor || '—'}</td>
                     <td className="py-1.5 px-2 text-right font-semibold">
                       <span className={`px-1.5 py-0.5 rounded ${qtyBadgeClass(item.quantity)}`}>{item.quantity}</span>
                     </td>
-                    <td className="py-1.5 px-2 text-right text-gray-500">{item.unit || '—'}</td>
+                    <td className="py-1.5 px-2 text-right text-gray-500">{item.unit ? getUnitLabel(item.unit) : '—'}</td>
                     <td className="py-1.5 px-2 text-right text-gray-600">{item.cost ? formatCOP(item.cost) + (item.pricingMode === 'WEIGHT' ? '/kg' : '') : '—'}</td>
                     <td className="py-1.5 px-2 text-right text-blue-600 font-semibold">{item.lastPrice ? formatCOP(item.lastPrice) + (item.pricingMode === 'WEIGHT' ? '/kg' : '') : '—'}</td>
                     <td className="py-1.5 px-2 text-center">
@@ -195,7 +200,14 @@ export default function InventoryView(props: InventoryViewProps) {
                       )}
                       <div className="text-[11px] font-semibold text-gray-800 truncate leading-tight" title={item.name}>{item.name}</div>
                       {item.unit && (
-                        <div className="text-[9px] text-gray-400 leading-tight">{item.unit}</div>
+                        <div className="text-[9px] text-gray-400 leading-tight">{getUnitLabel(item.unit)}</div>
+                      )}
+                      {(item.categoria || item.proveedor) && (
+                        <div className="text-[8px] text-gray-400 leading-tight mt-0.5 truncate">
+                          {item.categoria && <span>{item.categoria}</span>}
+                          {item.categoria && item.proveedor && <span> · </span>}
+                          {item.proveedor && <span>{item.proveedor}</span>}
+                        </div>
                       )}
                     </div>
                     <div className="flex items-center gap-0.5 shrink-0">

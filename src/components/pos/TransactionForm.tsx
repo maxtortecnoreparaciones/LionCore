@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getStockByProduct } from '../../services/db'
+import { getStockByProduct, getFrequentProducts } from '../../services/db'
 import { formatCOP } from '../../utils/format'
 
 type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
@@ -68,28 +68,40 @@ export default function TransactionForm({
 
   const handleProductoChange = async (value: string) => {
     onProductoChange(value)
-    if (value.length > 1) {
-      const stockData = await getStockByProduct()
-      const q = value.toLowerCase()
+    const stockData = await getStockByProduct()
+    const q = value.toLowerCase()
+    if (q) {
       const filtered = stockData.filter(p =>
         p.name.toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q) || (p.qr || '').toLowerCase().includes(q)
       )
       setProductSuggestions(filtered.map(p => ({ name: p.name, code: p.code, qr: p.qr, stock: p.quantity, lastPrice: p.lastPrice, unit: p.unit, pricingMode: p.pricingMode })))
       setShowProductDropdown(filtered.length > 0)
     } else {
-      setShowProductDropdown(false)
+      const frequent = await getFrequentProducts(20)
+      const freqNames = new Set(frequent.map(p => p.name.toLowerCase()))
+      const rest = stockData.filter(p => !freqNames.has(p.name.toLowerCase()))
+      const merged = [...frequent, ...rest]
+      setProductSuggestions(merged.map(p => ({ name: p.name, code: p.code, qr: p.qr, stock: p.quantity, lastPrice: p.lastPrice, unit: p.unit, pricingMode: p.pricingMode })))
+      setShowProductDropdown(merged.length > 0)
     }
   }
 
   const handleProductFocus = async () => {
-    if (producto.length > 1) {
-      const stockData = await getStockByProduct()
-      const q = producto.toLowerCase()
+    const stockData = await getStockByProduct()
+    const q = producto.toLowerCase()
+    if (q) {
       const filtered = stockData.filter(p =>
         p.name.toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q) || (p.qr || '').toLowerCase().includes(q)
       )
       setProductSuggestions(filtered.map(p => ({ name: p.name, code: p.code, qr: p.qr, stock: p.quantity, lastPrice: p.lastPrice, unit: p.unit, pricingMode: p.pricingMode })))
       setShowProductDropdown(filtered.length > 0)
+    } else {
+      const frequent = await getFrequentProducts(20)
+      const freqNames = new Set(frequent.map(p => p.name.toLowerCase()))
+      const rest = stockData.filter(p => !freqNames.has(p.name.toLowerCase()))
+      const merged = [...frequent, ...rest]
+      setProductSuggestions(merged.map(p => ({ name: p.name, code: p.code, qr: p.qr, stock: p.quantity, lastPrice: p.lastPrice, unit: p.unit, pricingMode: p.pricingMode })))
+      setShowProductDropdown(merged.length > 0)
     }
   }
 

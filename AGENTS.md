@@ -37,14 +37,12 @@ Tables: `businesses`, `products`, `transactions`, `transaction_items`, `transact
 5. Recarga → usuario tiene FREE activo
 
 ## GitHub Issues
-- **Closed (implementados)**: #43-#50, #55, #57-#61, #63-#65, #69, #87-#96, #111-#122
-- **Open**: #123-#125 (ver abajo)
+- **Closed (implementados)**: #43-#50, #55, #57-#61, #63-#65, #69, #87-#96, #111-#122, #123-#126
+- **Implementados**: #242 (persistencia Electron), #249 (flujo producción unificado)
+- **Open**: #250 (ver abajo)
 
 ## Issues Abiertos
-- #123 — Servicios técnicos visibles en template restaurante (bug, corregido)
-- #124 — Servidor Express no carga en .exe (bug, corregido: loadURL + /api/ip)
-- #125 — Cocina no permite avanzar estados de platos (enhancement, implementado: status pendiente/preparando/listo)
-- #126 — QR de pago no carga en modo producción (bug, corregido: ruta relativa)
+- #250 — Módulo Producción Unificado: estadísticas, multi-producto, exportación
 
 ## Common Commands
 ```bash
@@ -69,9 +67,16 @@ npm run electron:build # Build Windows .exe portable
 - Puerto 3456, accesible desde la red local (`0.0.0.0`)
 - Endpoints: `GET /api/mesas`, `POST /api/mesas/:id/pedidos`, `GET /api/pedidos`, `POST /api/pedidos/:id/estado`, `GET /api/ip`
 - WebSocket: broadcast de actualizaciones en tiempo real (pedido_nuevo, pedido_actualizado)
-- Catch-all SPA: `/{*path}` sirve dist/index.html
+- Catch-all SPA: `/{*path}` sirve dist/index.html (incluye `/waiter`, `/kitchen`)
 - EN producción: Electron carga `http://localhost:3456` (no loadFile)
 - Datos en memoria (no persistidos en servidor, solo en IndexedDB del cliente)
+
+## URL Routing (SPA)
+- App.tsx detecta `window.location.pathname` para rutas especiales:
+  - `/waiter` → RestaurantModule full-screen (sin header/nav/FAB) para meseros en celular
+  - `/kitchen` → CocinaView full-screen para cocina, con botón "Notifica al mesero" en vez de cobrar
+  - `/` → App completa normal (POS, config, views, etc.)
+- Express catch-all `/{*path}` sirve `dist/index.html` para todas las rutas; React maneja el routing interno
 
 ## Cocina Status Flow
 - Cada item de orden tiene status: `pendiente` (default) → `preparando` → `listo`

@@ -9,13 +9,15 @@ interface AppHeaderProps {
   showSummary: boolean
   showHistory: boolean
   showInventory: boolean
-  showProduction: boolean
   showFruverDashboard: boolean
   showServices: boolean
   showCustomers: boolean
   showSuppliers: boolean
   showInventoryHistory: boolean
   showCategories: boolean
+  showProcessConfig: boolean
+  showProcessExecution: boolean
+  showResources: boolean
   showMoreMenu: boolean
   onShowDeviceModal: () => void
   onShowLicenseModal: () => void
@@ -24,7 +26,6 @@ interface AppHeaderProps {
   onToggleSummary: () => void
   onToggleHistory: () => void
   onToggleInventory: () => void
-  onToggleProduction: () => void
   onToggleFruverDashboard: () => void
   onToggleServices: () => void
   onToggleMoreMenu: () => void
@@ -32,10 +33,12 @@ interface AppHeaderProps {
   onToggleSuppliers: () => void
   onToggleInventoryHistory: () => void
   onToggleCategories: () => void
+  onToggleProcessConfig: () => void
+  onToggleProcessExecution: () => void
+  onToggleResources: () => void
   onSetShowMoreMenu: (v: boolean) => void
   onSetShowReferrals: (v: boolean) => void
   onExportCSV: () => Promise<void>
-  onLoadProductionData: () => Promise<void>
   onLoadFruverDashboard: () => Promise<void>
   onLoadServiceOrders: () => Promise<void>
   onSetInventory: (data: any[]) => void
@@ -46,12 +49,13 @@ interface AppHeaderProps {
 
 const AppHeader: React.FC<AppHeaderProps> = ({
   licenseState, licenseStatusCheck, currentTpl, currentBusinessType,
-  showConfig, showSummary, showHistory, showInventory, showProduction, showFruverDashboard, showServices, showCustomers: _showCustomers, showMoreMenu,
+  showConfig, showSummary, showHistory, showInventory, showFruverDashboard, showServices, showCustomers: _showCustomers, showMoreMenu,
   onShowDeviceModal, onShowLicenseModal, onShowUpgradeModal,
-  onToggleConfig, onToggleSummary, onToggleHistory, onToggleInventory, onToggleProduction, onToggleFruverDashboard, onToggleServices,
+  onToggleConfig, onToggleSummary, onToggleHistory, onToggleInventory, onToggleFruverDashboard, onToggleServices,
   onToggleMoreMenu, onSetShowMoreMenu, onSetShowReferrals, onExportCSV,
   onToggleCustomers, onToggleSuppliers, onToggleInventoryHistory, onToggleCategories,
-  onLoadProductionData, onLoadFruverDashboard, onLoadServiceOrders,
+  onToggleProcessConfig, onToggleProcessExecution, onToggleResources,
+  onLoadFruverDashboard, onLoadServiceOrders,
   onSetInventory,
   isFeatureAllowed, getUpgradeMessage, getStockByProduct }) => {
   return (
@@ -116,19 +120,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
         >
           📦
         </button>
-        {currentBusinessType === 'deshidratados' && (
-          <button
-            onClick={async () => {
-              onToggleProduction()
-              if (!showProduction) {
-                await onLoadProductionData()
-              }
-            }}
-            className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${showProduction ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white hover:bg-gray-700'}`}
-          >
-            🏭
-          </button>
-        )}
+
         {currentBusinessType === 'fruver' && (
           <button
             onClick={async () => {
@@ -217,6 +209,24 @@ const AppHeader: React.FC<AppHeaderProps> = ({
                 className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
               >
                 <span>📂</span> Categorías
+              </button>
+              <button
+                onClick={() => { onToggleProcessConfig(); onSetShowMoreMenu(false) }}
+                className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+              >
+                <span>⚙️</span> Procesos
+              </button>
+              <button
+                onClick={() => { onToggleProcessExecution(); onSetShowMoreMenu(false) }}
+                className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+              >
+                <span>🏭</span> Producción Lotes
+              </button>
+              <button
+                onClick={() => { onToggleResources(); onSetShowMoreMenu(false) }}
+                className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+              >
+                <span>🔧</span> Recursos
               </button>
               <button
                 onClick={() => { onToggleConfig(); onSetShowMoreMenu(false) }}

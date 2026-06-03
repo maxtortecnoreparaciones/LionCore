@@ -1,4 +1,4 @@
-import { PRODUCT_UNITS, isWeightUnit, isVolumeUnit } from '../../services/db'
+import { PRODUCT_UNITS, isWeightUnit, isVolumeUnit, getUnitLabel } from '../../services/db'
 
 interface EditProductModalProps {
   show: boolean
@@ -29,6 +29,8 @@ interface EditProductModalProps {
 }
 
 export default function EditProductModal({
+  editProductCode,
+  editProductQR,
   editProductName,
   editProductPrice,
   editProductCost,
@@ -38,6 +40,8 @@ export default function EditProductModal({
   editProductCategoria,
   editProductPricingMode,
   editProductMargin,
+  onCodeChange,
+  onQRChange,
   onNameChange,
   onPriceChange,
   onCostChange,
@@ -63,6 +67,28 @@ export default function EditProductModal({
 
         <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6 pt-4 pb-2">
           <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Código</label>
+                <input
+                  type="text"
+                  value={editProductCode}
+                  onChange={e => onCodeChange(e.target.value)}
+                  placeholder="Auto-generado"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">QR</label>
+                <input
+                  type="text"
+                  value={editProductQR}
+                  onChange={e => onQRChange(e.target.value)}
+                  placeholder="Opcional"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
+                />
+              </div>
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del producto</label>
               <input
@@ -83,7 +109,7 @@ export default function EditProductModal({
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-base"
                 >
                   {PRODUCT_UNITS.map(u => (
-                    <option key={u} value={u}>{u} {isWeightUnit(u) ? '(peso)' : isVolumeUnit(u) ? '(volumen)' : '(unidad)'}</option>
+                    <option key={u} value={u}>{getUnitLabel(u)} {isWeightUnit(u) ? '(peso)' : isVolumeUnit(u) ? '(volumen)' : '(unidad)'}</option>
                   ))}
                 </select>
               </div>

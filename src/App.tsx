@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
-import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, updateBusinessType, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, resetAllMesas, setOrderItemStatus, InventoryConfig, getInventoryConfig, saveInventoryConfig, adjustInventory, getInventoryMode, createProduction, getProductions, getProductionDashboard, Production, getRawMaterials, getFinalProducts, createServiceOrder, updateServiceOrderStatus, getServiceOrders, ServiceOrder, upsertCustomer, sendWhatsAppReceipt, getProducts, Product, getDefaultUnit, generateNextProductCode, deleteProduct, isWeightUnit } from './services/db'
+import { useState, useEffect, useRef } from 'react'
+import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, updateBusinessType, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, resetAllMesas, setOrderItemStatus, InventoryConfig, getInventoryConfig, saveInventoryConfig, adjustInventory, getInventoryMode, createServiceOrder, updateServiceOrderStatus, getServiceOrders, ServiceOrder, upsertCustomer, sendWhatsAppReceipt, getProducts, Product, getDefaultUnit, generateNextProductCode, deleteProduct, isWeightUnit } from './services/db'
 import { getLicenseState, isFeatureAllowed, activateLicense, checkLicenseStatus, refreshLicenseCheck, getUpgradeMessage, getDeviceId, deactivateLicense, fetchSheetData, saveLicenseState } from './services/license'
+import { isElectron, syncSave, syncSaveKeepalive } from './services/persistence'
 import RestaurantModule from './components/restaurant/RestaurantModule'
 import CocinaView from './components/restaurant/CocinaView'
 import AppHeader from './components/layout/AppHeader'
@@ -15,13 +16,16 @@ import HistoryView from './components/views/HistoryView'
 import SummaryView from './components/views/SummaryView'
 import { ConfigView } from './components/views/ConfigView'
 import InventoryView from './components/views/InventoryView'
-import ProductionView from './components/views/ProductionView'
+// ProductionView reemplazado por ProcessExecutionView (Issue #249)
 import { FruverView } from './components/views/FruverView'
 import ServicesView from './components/views/ServicesView'
 import CustomersView from './components/views/CustomersView'
 import SuppliersView from './components/views/SuppliersView'
 import InventoryHistoryView from './components/views/InventoryHistoryView'
 import CategoriesView from './components/views/CategoriesView'
+import ProcessConfigView from './components/views/ProcessConfigView'
+import ProcessExecutionView from './components/views/ProcessExecutionView'
+import ResourcesView from './components/views/ResourcesView'
 import { formatCOP } from './utils/format'
 import InvoicePreview from './components/modals/InvoicePreview'
 import WasteModal from './components/modals/WasteModal'
@@ -144,15 +148,6 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [showMoreMenu, setShowMoreMenu] = useState(false)
   const [fabOpen, setFabOpen] = useState(false)
   const [showProduction, setShowProduction] = useState(false)
-  const [productionRawMaterial, setProductionRawMaterial] = useState('')
-  const [productionRawQty, setProductionRawQty] = useState('')
-  const [productionFinalProduct, setProductionFinalProduct] = useState('')
-  const [productionFinalQty, setProductionFinalQty] = useState('')
-  const [productionNotes, setProductionNotes] = useState('')
-  const [productions, setProductions] = useState<Production[]>([])
-  const [productionDashboard, setProductionDashboard] = useState<{totalProduced: number; totalWaste: number; avgRendimiento: number; totalBatches: number; totalCost: number} | null>(null)
-  const [rawMaterials, setRawMaterials] = useState<any[]>([])
-  const [finalProducts, setFinalProducts] = useState<any[]>([])
   const [showFruverDashboard, setShowFruverDashboard] = useState(false)
   const [fruverDashboard, setFruverDashboard] = useState<{ventasHoy: number; mermaHoy: number; gananciaHoy: number; productosCriticos: {name: string; code?: string; stock: number; diasRestantes: number}[]} | null>(null)
   const [showWasteModal, setShowWasteModal] = useState(false)
@@ -164,6 +159,9 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [showSuppliers, setShowSuppliers] = useState(false)
   const [showInventoryHistory, setShowInventoryHistory] = useState(false)
   const [showCategories, setShowCategories] = useState(false)
+  const [showProcessConfig, setShowProcessConfig] = useState(false)
+  const [showProcessExecution, setShowProcessExecution] = useState(false)
+  const [showResources, setShowResources] = useState(false)
   const [showServiceModal, setShowServiceModal] = useState(false)
   const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>([])
   const [serviceClientName, setServiceClientName] = useState('')
@@ -182,6 +180,9 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [newProductStock, setNewProductStock] = useState('')
   const [newProductUnit, setNewProductUnit] = useState(getDefaultUnit(currentBusinessType))
   const [newProductPricingMode, setNewProductPricingMode] = useState('UNIT')
+  const [newProductProveedor, setNewProductProveedor] = useState('')
+  const [newProductCategoria, setNewProductCategoria] = useState('')
+  const [newProductMargin, setNewProductMargin] = useState('')
   const [showEditProduct, setShowEditProduct] = useState(false)
   const [editProductId, setEditProductId] = useState<number | null>(null)
   const [editProductCode, setEditProductCode] = useState('')
@@ -259,6 +260,34 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   useEffect(() => {
     localStorage.setItem(`costConfig_${currentBusinessId}`, JSON.stringify(businessConfig))
   }, [businessConfig, currentBusinessId])
+
+  const autoSaveRef = useRef<ReturnType<typeof setInterval>>(undefined)
+  useEffect(() => {
+    let mounted = true
+    let cleanup: (() => void) | undefined
+    ;(async () => {
+      const electron = await isElectron()
+      if (!electron || !mounted) return
+      const doSave = async () => {
+        const result = await syncSave()
+        if (!result.ok && result.error !== 'No disponible en modo web') {
+          console.warn('Auto-save failed:', result.error)
+        }
+      }
+      doSave()
+      autoSaveRef.current = setInterval(doSave, 5 * 60 * 1000)
+      const handleBeforeUnload = () => { syncSaveKeepalive() }
+      window.addEventListener('beforeunload', handleBeforeUnload)
+      cleanup = () => {
+        if (autoSaveRef.current) clearInterval(autoSaveRef.current)
+        window.removeEventListener('beforeunload', handleBeforeUnload)
+      }
+    })()
+    return () => {
+      mounted = false
+      cleanup?.()
+    }
+  }, [])
 
   useEffect(() => {
     getAllBusinesses().then(async bizs => {
@@ -641,6 +670,9 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
         stock: qty,
         unidad: newProductUnit,
         pricingMode: pricingMode as 'UNIT' | 'WEIGHT',
+        proveedor: newProductProveedor.trim() || undefined,
+        categoria: newProductCategoria.trim() || undefined,
+        margin: newProductMargin ? Number(newProductMargin) : undefined,
         createdAt: new Date(),
       })
 
@@ -668,6 +700,9 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
       setNewProductStock('')
       setNewProductUnit(getDefaultUnit(currentBusinessType))
       setNewProductPricingMode('UNIT')
+      setNewProductProveedor('')
+      setNewProductCategoria('')
+      setNewProductMargin('')
       setShowAddProduct(false)
       showNotification('success', `Producto "${newProductName.trim()}" agregado${qty > 0 && totalCost > 0 ? ' con compra registrada' : ''}`)
       const stockData = await getStockByProduct()
@@ -859,65 +894,6 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
     setInlineEditField(null)
   }
 
-  const loadProductionData = async () => {
-    try {
-      const prods = await getProductions()
-      setProductions(prods)
-      const dashboard = await getProductionDashboard()
-      setProductionDashboard(dashboard)
-      const raw = await getRawMaterials()
-      setRawMaterials(raw)
-      const final = await getFinalProducts()
-      setFinalProducts(final)
-    } catch (error) {
-      console.error('Error loading production data:', error)
-    }
-  }
-
-  const handleProduction = async () => {
-    if (!productionRawMaterial || !productionRawQty || !productionFinalProduct || !productionFinalQty) {
-      showNotification('error', 'Completa todos los campos')
-      return
-    }
-    const rawQty = Number(productionRawQty)
-    const finalQty = Number(productionFinalQty)
-    if (rawQty <= 0 || finalQty <= 0) {
-      showNotification('error', 'Cantidades deben ser mayores a 0')
-      return
-    }
-    if (finalQty > rawQty) {
-      showNotification('error', 'El producto final no puede ser mayor a la materia prima')
-      return
-    }
-    try {
-      const rawProduct = await db.products.where({ businessId: currentBusinessId, name: productionRawMaterial, type: 'materia_prima' }).first()
-      const finalProduct = await db.products.where({ businessId: currentBusinessId, name: productionFinalProduct, type: 'producto_final' }).first()
-      if (!rawProduct || !finalProduct) {
-        showNotification('error', 'Selecciona materia prima y producto final validos')
-        return
-      }
-      await createProduction(rawProduct.id!, rawQty, finalProduct.id!, finalQty, productionNotes || undefined)
-      showNotification('success', 'Produccion registrada')
-      setProductionRawMaterial('')
-      setProductionRawQty('')
-      setProductionFinalProduct('')
-      setProductionFinalQty('')
-      setProductionNotes('')
-      await loadProductionData()
-    } catch (error) {
-      console.error('Error en produccion:', error)
-      showNotification('error', 'Error al registrar produccion')
-    }
-  }
-
-  const calculatedRendimiento = () => {
-    const raw = Number(productionRawQty)
-    const final = Number(productionFinalQty)
-    if (raw > 0 && final > 0) {
-      return ((final / raw) * 100).toFixed(1)
-    }
-    return '0'
-  }
 
   const loadFruverDashboard = async () => {
     try {
@@ -1164,22 +1140,23 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             showSummary={showSummary}
             showHistory={showHistory}
             showInventory={showInventory}
-            showProduction={showProduction}
             showFruverDashboard={showFruverDashboard}
             showServices={showServices}
             showCustomers={showCustomers}
             showSuppliers={showSuppliers}
             showInventoryHistory={showInventoryHistory}
             showCategories={showCategories}
+            showProcessConfig={showProcessConfig}
+            showProcessExecution={showProcessExecution}
+            showResources={showResources}
             showMoreMenu={showMoreMenu}
             onShowDeviceModal={() => setShowDeviceModal(true)}
             onShowLicenseModal={() => setShowLicenseModal(true)}
             onShowUpgradeModal={(msg: {title: string; message: string}) => setShowUpgradeModal(msg)}
             onToggleConfig={() => { setShowConfig(!showConfig); setShowSummary(false); setShowHistory(false); setShowInventory(false); }}
             onToggleInventory={() => { setShowInventory(!showInventory); setShowSummary(false); setShowHistory(false); setShowConfig(false); }}
-            onToggleProduction={() => { setShowProduction(!showProduction); setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false) }}
             onToggleFruverDashboard={() => { setShowFruverDashboard(!showFruverDashboard); setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowProduction(false) }}
-            onToggleServices={() => { setShowServices(!showServices); setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowProduction(false); setShowFruverDashboard(false) }}
+            onToggleServices={() => { setShowServices(!showServices); setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowFruverDashboard(false) }}
             onToggleSummary={() => { handleToggleSummary(); setShowHistory(false); setShowInventory(false); setShowConfig(false); }}
             onToggleHistory={() => { handleToggleHistory(); setShowSummary(false); setShowInventory(false); setShowConfig(false); }}
             onToggleMoreMenu={() => setShowMoreMenu(!showMoreMenu)}
@@ -1187,6 +1164,9 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             onToggleSuppliers={() => { setShowSuppliers(!showSuppliers); setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowServices(false); setShowProduction(false); setShowFruverDashboard(false); setShowCustomers(false); setShowInventoryHistory(false) }}
             onToggleInventoryHistory={() => { setShowInventoryHistory(!showInventoryHistory); setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowServices(false); setShowProduction(false); setShowFruverDashboard(false); setShowCustomers(false); setShowSuppliers(false); setShowCategories(false) }}
             onToggleCategories={() => { setShowCategories(!showCategories); setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowServices(false); setShowProduction(false); setShowFruverDashboard(false); setShowCustomers(false); setShowSuppliers(false); setShowInventoryHistory(false) }}
+            onToggleProcessConfig={() => { setShowProcessConfig(!showProcessConfig); setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowServices(false); setShowProduction(false); setShowFruverDashboard(false); setShowCustomers(false); setShowSuppliers(false); setShowInventoryHistory(false); setShowCategories(false); setShowResources(false); setShowProcessExecution(false) }}
+            onToggleProcessExecution={() => { setShowProcessExecution(!showProcessExecution); setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowServices(false); setShowProduction(false); setShowFruverDashboard(false); setShowCustomers(false); setShowSuppliers(false); setShowInventoryHistory(false); setShowCategories(false); setShowProcessConfig(false); setShowResources(false) }}
+            onToggleResources={() => { setShowResources(!showResources); setShowSummary(false); setShowHistory(false); setShowConfig(false); setShowInventory(false); setShowServices(false); setShowProduction(false); setShowFruverDashboard(false); setShowCustomers(false); setShowSuppliers(false); setShowInventoryHistory(false); setShowCategories(false); setShowProcessConfig(false); setShowProcessExecution(false) }}
             onSetShowMoreMenu={(v: boolean) => setShowMoreMenu(v)}
             onSetShowReferrals={(v: boolean) => setShowReferrals(v)}
             onExportCSV={async () => {
@@ -1207,9 +1187,6 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
               a.click()
               URL.revokeObjectURL(url)
               setShowMoreMenu(false)
-            }}
-            onLoadProductionData={async () => {
-              await loadProductionData()
             }}
             onLoadFruverDashboard={async () => {
               await loadFruverDashboard()
@@ -1322,25 +1299,8 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             canAdjust={isFeatureAllowed('config')}
           />
 
-          <ProductionView
-            show={showProduction}
-            productionDashboard={productionDashboard as any}
-            rawMaterial={productionRawMaterial}
-            onRawMaterialChange={setProductionRawMaterial}
-            rawMaterials={rawMaterials as any}
-            defaultUnit={getDefaultUnit(currentBusinessType)}
-            finalProduct={productionFinalProduct}
-            onFinalProductChange={setProductionFinalProduct}
-            finalProducts={finalProducts as any}
-            rawQty={productionRawQty}
-            onRawQtyChange={setProductionRawQty}
-            finalQty={productionFinalQty}
-            onFinalQtyChange={setProductionFinalQty}
-            notes={productionNotes}
-            onNotesChange={setProductionNotes}
-            calcRendimiento={Number(calculatedRendimiento())}
-            onRegister={handleProduction}
-            productions={productions as any}
+          <ProcessExecutionView
+            show={showProduction || showProcessExecution}
           />
 
           <FruverView
@@ -1423,6 +1383,14 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
 
           <CategoriesView
             show={showCategories}
+          />
+
+          <ProcessConfigView
+            show={showProcessConfig}
+          />
+
+          <ResourcesView
+            show={showResources}
           />
 
           {showLicenseModal && (
@@ -1665,6 +1633,9 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
               newProductStock={newProductStock}
               newProductUnit={newProductUnit}
               newProductPricingMode={newProductPricingMode}
+              newProductProveedor={newProductProveedor}
+              newProductCategoria={newProductCategoria}
+              newProductMargin={newProductMargin}
               onNameChange={setNewProductName}
               onPriceChange={setNewProductPrice}
               onCostChange={setNewProductCost}
@@ -1673,6 +1644,10 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
                 setNewProductUnit(v as any)
                 if (v === 'kg' || v === 'g' || v === 'lb' || v === 'oz') setNewProductPricingMode('WEIGHT')
               }}
+              onPricingModeChange={setNewProductPricingMode}
+              onProveedorChange={setNewProductProveedor}
+              onCategoriaChange={setNewProductCategoria}
+              onMarginChange={setNewProductMargin}
               onSave={handleAddProduct}
               onClose={() => setShowAddProduct(false)}
             />
