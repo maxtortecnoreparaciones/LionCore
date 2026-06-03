@@ -3,11 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <title>LionCore - POS System</title>
-    <script type="module" crossorigin src="./assets/index-V4rbdZ7g.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-VdSTbuml.css">
+    <script type="module" src="/assets/index-CB_AkSju.js"></script>
+    <link rel="stylesheet" href="/assets/index-ohKBhQUD.css">
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+        })
+      }
+    </script>
   </body>
 </html>

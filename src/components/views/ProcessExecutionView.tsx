@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { formatCOP } from '../../utils/format'
 import {
   ProductionBatch, BatchStepLog, BatchProduct, Product, ProductionBatchRun,
   getRawMaterials,
@@ -55,6 +56,7 @@ export default function ProcessExecutionView({ show }: ProcessExecutionViewProps
   // Dashboard
   const [dashboard, setDashboard] = useState<any>(null)
   const [history, setHistory] = useState<any[]>([])
+  const [allBatchSteps, setAllBatchSteps] = useState<BatchStepLog[]>([])
 
   // Processos inline
   const [processes, setProcesses] = useState<any[]>([])
@@ -95,7 +97,14 @@ export default function ProcessExecutionView({ show }: ProcessExecutionViewProps
     setAllProducts(await getProducts())
   }
   const loadBatches = async () => { setBatches(await getProductionBatches()) }
-  const loadDashboard = async () => { setDashboard(await getProductionDashboard()); setHistory(await getProductions()) }
+  const loadDashboard = async () => {
+    setDashboard(await getProductionDashboard())
+    const hist = await getProductions()
+    setHistory(hist)
+    // Load ALL step logs for process stats (across all completed batches)
+    const allSteps = await db.batch_step_logs.toArray()
+    setAllBatchSteps(allSteps)
+  }
   const loadOperarios = async () => { setOperarios((await getActiveResources('OPERARIO')).map(r => ({ id: r.id!, name: r.name }))) }
   const loadProcesses = async () => { setProcesses(await getProductionProcesses()) }
   const loadResources = async () => { setResources((await getActiveResources()) as any) }
@@ -322,10 +331,10 @@ export default function ProcessExecutionView({ show }: ProcessExecutionViewProps
 
   const selectedBatchData = batches.find(b => b.id === selectedBatch)
 
-  // Compute enriched statistics
-  const stepStats = steps.filter(s => s.startTime && s.endTime)
-  const totalStepTime = stepStats.reduce((acc, s) => acc + (new Date(s.endTime!).getTime() - new Date(s.startTime!).getTime()), 0)
-  const avgBatchTime = history.length > 0 ? (totalStepTime / history.length / 60000).toFixed(1) : '—'
+  // Compute enriched statistics (across ALL completed batches)
+  const histStepStats = allBatchSteps.filter(s => s.startTime && s.endTime)
+  const totalHistStepTime = histStepStats.reduce((acc, s) => acc + (new Date(s.endTime!).getTime() - new Date(s.startTime!).getTime()), 0)
+  const avgStepTime = histStepStats.length > 0 ? (totalHistStepTime / histStepStats.length / 60000).toFixed(1) : '—'
   const totalWastePct = history.reduce((s, p) => s + p.wasteQty, 0)
   const totalInput = history.reduce((s, p) => s + p.rawMaterialQty, 0)
   const globalWastePct = totalInput > 0 ? ((totalWastePct / totalInput) * 100).toFixed(1) : '0'
@@ -806,14 +815,14 @@ export default function ProcessExecutionView({ show }: ProcessExecutionViewProps
             ) : (
               <div className="space-y-4">
                 {/* KPIs */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   <div className="bg-white border border-gray-200 rounded-lg p-3 text-center">
                     <p className="text-xs text-gray-500">Total Lotes</p>
                     <p className="text-xl font-bold text-gray-800">{dashboard?.totalBatches || 0}</p>
                   </div>
                   <div className="bg-white border border-gray-200 rounded-lg p-3 text-center">
-                    <p className="text-xs text-gray-500">Tiempo Promedio</p>
-                    <p className="text-xl font-bold text-blue-600">{avgBatchTime === '—' ? '—' : `${avgBatchTime} min`}</p>
+                    <p className="text-xs text-gray-500">Tiempo Prom./Paso</p>
+                    <p className="text-xl font-bold text-blue-600">{avgStepTime === '—' ? '—' : `${avgStepTime} min`}</p>
                   </div>
                   <div className="bg-white border border-gray-200 rounded-lg p-3 text-center">
                     <p className="text-xs text-gray-500">Merma Global</p>
@@ -822,6 +831,10 @@ export default function ProcessExecutionView({ show }: ProcessExecutionViewProps
                   <div className="bg-white border border-gray-200 rounded-lg p-3 text-center">
                     <p className="text-xs text-gray-500">Rendimiento Prom.</p>
                     <p className="text-xl font-bold text-green-600">{dashboard?.avgRendimiento.toFixed(1) || '0'}%</p>
+                  </div>
+                  <div className="bg-white border border-gray-200 rounded-lg p-3 text-center">
+                    <p className="text-xs text-gray-500">Costo Total</p>
+                    <p className="text-xl font-bold text-amber-600">{dashboard ? formatCOP(dashboard.totalCost) : '$0'}</p>
                   </div>
                 </div>
 
@@ -858,34 +871,31 @@ export default function ProcessExecutionView({ show }: ProcessExecutionViewProps
                   })()}
                 </div>
 
-                {/* Process/oven stats */}
+                {/* Process/oven stats (across ALL history) */}
                 <div>
                   <h3 className="text-sm font-semibold text-gray-700 mb-2">⚙️ Por Proceso</h3>
                   {(() => {
-                    // Get unique process names from all completed batches
-                    const procStats: Record<string, { count: number; totalTime: number; statuses: string[] }> = {}
-                    // For simplicity, we show process names from the current batch steps
-                    for (const s of steps) {
-                      if (!procStats[s.processName]) procStats[s.processName] = { count: 0, totalTime: 0, statuses: [] }
+                    const procStats: Record<string, { count: number; completed: number; totalTime: number }> = {}
+                    for (const s of allBatchSteps) {
+                      if (!procStats[s.processName]) procStats[s.processName] = { count: 0, completed: 0, totalTime: 0 }
                       procStats[s.processName].count++
-                      procStats[s.processName].statuses.push(s.status)
+                      if (s.status === 'completado') procStats[s.processName].completed++
                       if (s.startTime && s.endTime) {
                         procStats[s.processName].totalTime += new Date(s.endTime).getTime() - new Date(s.startTime).getTime()
                       }
                     }
                     return Object.keys(procStats).length === 0 ? (
-                      <p className="text-xs text-gray-400">Abre un lote para ver estadisticas de procesos</p>
+                      <p className="text-xs text-gray-400">Sin datos de procesos</p>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                        {Object.entries(procStats).map(([name, stats]) => {
-                          const avgTime = stats.count > 0 ? (stats.totalTime / stats.count / 60000).toFixed(1) : '—'
-                          const completed = stats.statuses.filter(s => s === 'completado').length
+                        {Object.entries(procStats).map(([name, st]) => {
+                          const avgTime = st.count > 0 ? (st.totalTime / st.count / 60000).toFixed(1) : '—'
                           return (
                             <div key={name} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
                               <p className="font-semibold text-sm text-gray-800">{name}</p>
                               <div className="grid grid-cols-2 gap-1 mt-1 text-[10px]">
-                                <span>Ejecuciones: {stats.count}</span>
-                                <span>Completados: {completed}</span>
+                                <span>Ejecuciones: {st.count}</span>
+                                <span>Completados: {st.completed}</span>
                                 <span className="text-blue-500">Tiempo prom: {avgTime === '—' ? '—' : `${avgTime} min`}</span>
                               </div>
                             </div>
