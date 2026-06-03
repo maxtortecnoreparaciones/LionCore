@@ -564,7 +564,7 @@ class LionCoreDB extends Dexie {
     this.version(15).stores({
       production_processes: '++id, businessId, active, sortOrder',
       production_batches: '++id, businessId, loteId, status, rawMaterialName, createdAt',
-      batch_step_logs: '++id, batchId, runId, processId, status, sortOrder',
+      batch_step_logs: '++id, batchId, runId, [batchId+runId], processId, status, sortOrder',
       production_resources: '++id, businessId, type, estado',
       batch_products: '++id, batchId',
       production_batch_runs: '++id, batchId, estado, createdAt',

@@ -5,23 +5,29 @@
 - **Build**: `npm run build` (tsc + vite build) / `npm run dev` (vite dev)
 - **Desktop**: Electron via `npm run electron:dev` / `npm run electron:build`
 - **Offline-first**: PWA Service Worker (`public/sw.js`) + IndexedDB
+- **Testing**: Vitest + jsdom + fake-indexeddb — `npm test` (14 tests)
+- **Persistencia**: Auto-save cada 5min + beforeunload en Electron, backups en `%APPDATA%/LionCore/LionCoreData/`, copia automática a Google Drive si está instalado
 
 ## Business Types
 5 tipos en `src/services/db.ts` (`businessTemplates`): `pos`, `deshidratados`, `restaurante`, `fruver`, `service_store`. Cada uno define `unidad`, `showProduccion`, `showGastos`, `showCompra`, `label`, `emoji`.
 
 ## Key Files
 - `src/App.tsx` (~2523 lines) — UI principal con todos los módulos integrados (refactorizado: Header, 6 modales, TransactionForm, 8 vistas extraídos)
-- `src/services/db.ts` — DB schema v7, CRUD, business logic (~1410 lines)
+- `src/services/db.ts` — DB schema v15, CRUD, business logic (~2428 lines)
 - `src/services/license.ts` — Validación Google Sheet, DeviceId, plan FREE/PRO, offline 72h
 - `src/services/registration.ts` — Registro de usuarios vía Google Apps Script webhook
 - `src/services/registration.gs` — Código Google Apps Script para desplegar como Web App
+- `src/services/persistence.ts` — Persistencia Electron: syncSave, syncLoad, backups, export
 - `electron/main.js` — Electron entry: inicia Express server en puerto 3456, luego loadURL
-- `electron/server.js` — Express API (mesas, pedidos, WebSocket) + QR endpoint
-- `src/components/views/` — 8 vistas extraídas (History, Summary, Config, Inventory, Production, Fruver, Services, Warehouses)
+- `electron/server.js` — Express API (mesas, pedidos, WebSocket, persistencia, QR, backups, Google Drive)
+- `src/components/views/` — 11 vistas extraídas (History, Summary, Config, Inventory, Fruver, Services, Warehouses, ProcessConfig, ProcessExecution, Resources, Customers, Suppliers)
 - `src/utils/format.ts` — formatCOP, formatDate, getTypeStyle
+- `docs/persistencia-backups.md` — Documentación de persistencia y backups
+- `tests/persistence.test.ts` — Tests unitarios persistencia (5 tests)
+- `tests/server-persistence.test.ts` — Tests integración servidor Express (9 tests)
 
-## Database Schema (v7)
-Tables: `businesses`, `products`, `transactions`, `transaction_items`, `transaction_meta`, `inventory_adjustments`, `productions`, `service_orders`, `customers`, `mesas`, `warehouses`, `warehouse_stock`.
+## Database Schema (v15)
+Tables: `businesses`, `products`, `transactions`, `transaction_items`, `transaction_meta`, `inventory_adjustments`, `productions`, `service_orders`, `customers`, `mesas`, `warehouses`, `warehouse_stock`, `production_processes`, `production_batches`, `batch_step_logs`, `production_resources`, `batch_products`, `production_batch_runs`.
 
 ## License & Plans
 - **FREE**: Ventas + Exportar + Inventario + Producción (deshidratados)
@@ -38,11 +44,11 @@ Tables: `businesses`, `products`, `transactions`, `transaction_items`, `transact
 
 ## GitHub Issues
 - **Closed (implementados)**: #43-#50, #55, #57-#61, #63-#65, #69, #87-#96, #111-#122, #123-#126
-- **Implementados**: #242 (persistencia Electron), #249 (flujo producción unificado)
+- **Implementados**: #242 (persistencia Electron + auto-save + backups + tests), #249 (flujo producción unificado), #251 (tandas de producción)
 - **Open**: #250 (ver abajo)
 
 ## Issues Abiertos
-- #250 — Módulo Producción Unificado: estadísticas, multi-producto, exportación
+- #250 — Módulo Producción Unificado: RF1-RF5 implementados, RF6 multi-producto pendiente, pruebas P1-P11 sin ejecutar
 
 ## Common Commands
 ```bash
@@ -50,6 +56,7 @@ npm run build          # Build production
 npm run dev            # Dev server
 npm run electron:dev   # Electron dev (Vite + Express)
 npm run electron:build # Build Windows .exe portable
+npm test               # 14 tests (vitest)
 ```
 
 ## Build Warnings
