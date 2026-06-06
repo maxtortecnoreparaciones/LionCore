@@ -48,8 +48,11 @@
     "wait-on": "^8.0.2"
   },
   "build": {
-    "appId": "com.lioncore.app",
+    "appId": "com.lioncore.pos",
     "productName": "LionCore",
+    "directories": {
+      "output": "release"
+    },
     "directories": {
       "output": "release"
     },
@@ -61,7 +64,8 @@
       "target": [
         "portable"
       ],
-      "icon": "public/icon.png"
+      "icon": "public/icon.png",
+      "artifactName": "LionCore-v${version}.exe"
     }
   }
 }

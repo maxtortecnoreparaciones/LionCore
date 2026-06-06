@@ -25,8 +25,7 @@ export default function ProcessExecutionView({ show }: ProcessExecutionViewProps
   // Quick create form
   const [rawMaterial, setRawMaterial] = useState('')
   const [rawQty, setRawQty] = useState('')
-  const [outputName, setOutputName] = useState('')
-  const [outputQty, setOutputQty] = useState('')
+  const [outputs, setOutputs] = useState<{ name: string; qty: string }[]>([{ name: '', qty: '' }])
   const [batchNotes, setBatchNotes] = useState('')
 
   // Inline product creation
@@ -172,23 +171,26 @@ export default function ProcessExecutionView({ show }: ProcessExecutionViewProps
     const raw = rawMaterials.find(p => p.name === rawMaterial)
     if (!raw?.id) { alert('Selecciona una materia prima valida'); return }
 
-    let outputProduct = allProducts.find(p => p.name.toLowerCase() === outputName.trim().toLowerCase())
-    if (!outputProduct && outputName.trim()) {
-      const businessId = raw.businessId
-      const newId = await db.products.add({
-        businessId,
-        name: outputName.trim(),
-        type: 'producto_final',
-        price: 0,
-        stock: 0,
-        unidad: raw.unidad || 'kg',
-        createdAt: new Date(),
-      })
-      outputProduct = { id: newId, businessId, name: outputName.trim(), type: 'producto_final', price: 0, stock: 0, createdAt: new Date() }
-    }
-    if (!outputProduct?.id) { alert('Especifica un nombre para el producto final'); return }
+    const validOutputs = outputs.filter(o => o.name.trim())
+    if (validOutputs.length === 0) { alert('Agrega al menos un producto final'); return }
 
-    const outputs: BatchOutputInput[] = [{ finalProductId: outputProduct.id, finalProductQty: Number(outputQty) || Number(rawQty) * 0.3 }]
+    const batchOutputs: BatchOutputInput[] = []
+    for (const out of validOutputs) {
+      let product = allProducts.find(p => p.name.toLowerCase() === out.name.trim().toLowerCase())
+      if (!product) {
+        const newId = await db.products.add({
+          businessId: raw.businessId,
+          name: out.name.trim(),
+          type: 'producto_final',
+          price: 0,
+          stock: 0,
+          unidad: raw.unidad || 'kg',
+          createdAt: new Date(),
+        })
+        product = { id: newId, businessId: raw.businessId, name: out.name.trim(), type: 'producto_final', price: 0, stock: 0, createdAt: new Date() }
+      }
+      batchOutputs.push({ finalProductId: product.id!, finalProductQty: Number(out.qty) || Number(rawQty) * 0.3 })
+    }
 
     const avatar = {
       humedad: avatarHumedad ? Number(avatarHumedad) : undefined,
@@ -197,10 +199,10 @@ export default function ProcessExecutionView({ show }: ProcessExecutionViewProps
       grado: avatarGrado || undefined,
     }
 
-    const batchId = await createUnifiedBatch(raw.id, Number(rawQty), outputs, batchNotes || undefined, avatar, costoEntrada ? Number(costoEntrada) : undefined)
+    const batchId = await createUnifiedBatch(raw.id, Number(rawQty), batchOutputs, batchNotes || undefined, avatar, costoEntrada ? Number(costoEntrada) : undefined)
     await startUnifiedBatch(batchId)
 
-    setRawMaterial(''); setRawQty(''); setOutputName(''); setOutputQty('')
+    setRawMaterial(''); setRawQty(''); setOutputs([{ name: '', qty: '' }])
     setBatchNotes(''); setAvatarHumedad(''); setAvatarTemperatura(''); setAvatarTiempo(''); setAvatarGrado('estandar')
     setCostoEntrada('')
     await loadBatches()
@@ -430,23 +432,30 @@ export default function ProcessExecutionView({ show }: ProcessExecutionViewProps
                 <input type="number" value={rawQty} onChange={e => setRawQty(e.target.value)} placeholder="Ej: 10" className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">🍍 Producto Final (nombre)</label>
-                <div className="relative">
-                  <input type="text" value={outputName} onChange={e => setOutputName(e.target.value)}
-                    placeholder="Ej: Piña Deshidratada"
-                    list="output-suggestions"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm" />
-                  <datalist id="output-suggestions">
-                    {allProducts.filter(p => p.type === 'producto_final').map(p => (
-                      <option key={p.id} value={p.name} />
-                    ))}
-                  </datalist>
+                <label className="block text-sm font-medium text-gray-700 mb-1">🍍 Productos Finales</label>
+                <div className="space-y-2">
+                  {outputs.map((out, i) => (
+                    <div key={i} className="flex gap-2 items-start">
+                      <input type="text" value={out.name} onChange={e => {
+                        const copy = [...outputs]; copy[i].name = e.target.value; setOutputs(copy)
+                      }} placeholder="Ej: Piña Deshidratada"
+                        list="output-suggestions"
+                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm" />
+                      <datalist id="output-suggestions">
+                        {allProducts.filter(p => p.type === 'producto_final').map(p => (
+                          <option key={p.id} value={p.name} />
+                        ))}
+                      </datalist>
+                      <input type="number" value={out.qty} onChange={e => {
+                        const copy = [...outputs]; copy[i].qty = e.target.value; setOutputs(copy)
+                      }} placeholder="Cant. est." className="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                      <button onClick={() => setOutputs(outputs.filter((_, j) => j !== i))} disabled={outputs.length <= 1}
+                        className="px-2 py-2 text-red-500 text-sm disabled:opacity-30 disabled:cursor-not-allowed">✕</button>
+                    </div>
+                  ))}
                 </div>
-                <p className="text-[10px] text-gray-400 mt-0.5">Si no existe, se crea automaticamente al iniciar el lote</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad Obtenida (estimada)</label>
-                <input type="number" value={outputQty} onChange={e => setOutputQty(e.target.value)} placeholder="Ej: 7" className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm" />
+                <button onClick={() => setOutputs([...outputs, { name: '', qty: '' }])} className="mt-1.5 text-xs px-3 py-1.5 bg-green-100 text-green-700 rounded-lg font-semibold hover:bg-green-200">➕ Agregar producto</button>
+                <p className="text-[10px] text-gray-400 mt-0.5">Si no existen, se crean automaticamente al iniciar el lote</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">💰 Costo Entrada ($)</label>
@@ -487,32 +496,37 @@ export default function ProcessExecutionView({ show }: ProcessExecutionViewProps
             </div>
 
             {/* Preview */}
-            {rawMaterial && rawQty && outputName && (
+            {rawMaterial && rawQty && outputs.some(o => o.name.trim()) && (
               <div className="p-3 bg-gray-50 rounded-lg text-sm">
                 <p className="font-semibold text-gray-700">📋 Resumen del lote:</p>
                 <p className="mt-1">{rawMaterial}: <strong>{rawQty} kg</strong></p>
-                <p>→ {outputName}: <strong>{outputQty || (Number(rawQty) * 0.3).toFixed(1)} kg</strong> (estimado)</p>
-                {(() => {
-                  const qty = Number(outputQty) || Number(rawQty) * 0.3
-                  const merma = Math.max(0, Number(rawQty) - qty)
-                  const rend = ((qty / Number(rawQty)) * 100).toFixed(1)
-                  const cost = costoEntrada ? Number(costoEntrada) : 0
-                  const costUnit = qty > 0 && cost > 0 ? (cost / qty).toFixed(0) : null
-                  return (
-                    <div className="mt-1 pt-1 border-t border-gray-200 text-xs">
-                      <span className="text-red-500">Merma est.: {merma.toFixed(1)} kg</span>
-                      <span className={`ml-4 font-bold ${Number(rend) < 30 ? 'text-red-600' : 'text-green-600'}`}>Rendimiento est.: {rend}%</span>
-                      {cost > 0 && <span className="ml-4 text-green-600">Costo: ${cost.toLocaleString()}</span>}
-                      {costUnit && <span className="ml-3 text-blue-600">~${costUnit}/kg</span>}
-                    </div>
-                  )
-                })()}
+                <div className="mt-1 space-y-1">
+                  {outputs.filter(o => o.name.trim()).map((out, i) => {
+                    const qty = Number(out.qty) || Number(rawQty) * 0.3
+                    const merma = Math.max(0, Number(rawQty) - qty)
+                    const rend = ((qty / Number(rawQty)) * 100).toFixed(1)
+                    const cost = costoEntrada ? Number(costoEntrada) : 0
+                    const costUnit = qty > 0 && cost > 0 ? Math.round(cost / qty).toLocaleString() : null
+                    return (
+                      <div key={i} className="flex items-center gap-2 text-xs">
+                        <span className="font-medium">{out.name || `Producto ${i + 1}`}:</span>
+                        <strong>{qty.toFixed(1)} kg</strong>
+                        <span className="text-red-500 ml-2">Merma est.: {merma.toFixed(1)} kg</span>
+                        <span className={`font-bold ${Number(rend) < 30 ? 'text-red-600' : 'text-green-600'}`}>Rend. est.: {rend}%</span>
+                        {costUnit && <span className="text-blue-600 ml-1">~${costUnit}/kg</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+                {costoEntrada && Number(costoEntrada) > 0 && (
+                  <p className="text-xs text-green-600 mt-1">💰 Costo total entrada: ${Number(costoEntrada).toLocaleString()}</p>
+                )}
               </div>
             )}
 
             <button
               onClick={handleCreateBatch}
-              disabled={!rawMaterial || !rawQty || !outputName}
+              disabled={!rawMaterial || !rawQty || !outputs.some(o => o.name.trim())}
               className="w-full py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm"
             >
               🏭 Iniciar Lote

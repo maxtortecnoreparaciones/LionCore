@@ -18,6 +18,10 @@ function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents)
     
+    if (data.action === 'addLicense') {
+      return handleAddLicense(data)
+    }
+
     if (!data.email || !data.name || !data.businessName) {
       return createResponse({ success: false, message: 'Faltan campos requeridos' }, 400)
     }
@@ -68,6 +72,10 @@ function doPost(e) {
 function doGet(e) {
   try {
     const data = JSON.parse(e.parameter.data)
+
+    if (data.action === 'addLicense') {
+      return handleAddLicense(data)
+    }
     
     if (!data.email || !data.name || !data.businessName) {
       return createResponse({ success: false, message: 'Faltan campos requeridos' }, 400)
@@ -102,6 +110,32 @@ function doGet(e) {
     }
 
     return createResponse({ success: true, message: 'Registro exitoso' })
+  } catch (error) {
+    return createResponse({ success: false, message: 'Error: ' + error.toString() }, 500)
+  }
+}
+
+function handleAddLicense(data) {
+  try {
+    const licenciasSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(LICENSES_SHEET_NAME)
+    if (!licenciasSheet) {
+      return createResponse({ success: false, message: 'Sheet Licencias no encontrado' }, 500)
+    }
+    
+    licenciasSheet.appendRow([
+      data.email,
+      data.plan || 'pro',
+      data.startDate || new Date().toISOString().split('T')[0],
+      data.endDate || new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      data.isActive || 'FALSE',
+      data.deviceId || '',
+      data.notes || 'Solicitud activación local',
+      data.negocio || '',
+      data.tipo || '',
+      data.solicitado || '',
+    ])
+    
+    return createResponse({ success: true, message: 'Licencia agregada al sheet. Pendiente de validación por administrador.' })
   } catch (error) {
     return createResponse({ success: false, message: 'Error: ' + error.toString() }, 500)
   }

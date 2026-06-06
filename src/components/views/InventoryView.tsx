@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { formatCOP } from '../../utils/format'
-import { getUnitLabel } from '../../services/db'
 
 interface InventoryItem {
   id?: number
@@ -9,6 +8,10 @@ interface InventoryItem {
   name: string
   proveedor?: string
   categoria?: string
+  modelo?: string
+  color?: string
+  ubicacion?: string
+  subUbicacion?: string
   quantity: number
   totalProduced: number
   totalSold: number
@@ -44,6 +47,8 @@ interface InventoryViewProps {
   onDelete: (name: string) => void
   canPurchase: boolean
   canAdjust: boolean
+  onQuickAdd?: () => void
+  onGenerateVariants?: () => void
 }
 
 function qtyColorClass(qty: number): string {
@@ -81,7 +86,8 @@ function profitIcon(margin: number | null): string {
 
 export default function InventoryView(props: InventoryViewProps) {
   const { show, inventory, inventorySearch, onSearchChange, invConfig,
-    onSelectProduct, onSetLastPrice, onPurchase, onAdjust, onEdit, onDelete, canPurchase, canAdjust } = props
+    onSelectProduct, onSetLastPrice, onPurchase, onAdjust, onEdit, onDelete,
+    canPurchase, canAdjust, onQuickAdd, onGenerateVariants } = props
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards')
 
   if (!show) return null
@@ -92,18 +98,34 @@ export default function InventoryView(props: InventoryViewProps) {
     (i.code || '').toLowerCase().includes(q) ||
     (i.qr || '').toLowerCase().includes(q) ||
     (i.proveedor || '').toLowerCase().includes(q) ||
-    (i.categoria || '').toLowerCase().includes(q)
+    (i.categoria || '').toLowerCase().includes(q) ||
+    (i.modelo || '').toLowerCase().includes(q) ||
+    (i.color || '').toLowerCase().includes(q) ||
+    (i.ubicacion || '').toLowerCase().includes(q) ||
+    (i.subUbicacion || '').toLowerCase().includes(q)
   )
 
   return (
     <div className="bg-white rounded-xl shadow-md overflow-hidden">
       <div className="p-3 border-b border-gray-200">
-        <div className="flex items-center gap-2">
-          <div className="flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex-1 min-w-0">
             <h2 className="text-lg font-bold text-gray-800">Inventario</h2>
-            <p className="text-[11px] text-gray-500">{inventory.length} productos</p>
+            <p className="text-[11px] text-gray-500">{inventory.length} productos · {filtered.length} filtrados</p>
           </div>
           <div className="flex gap-1">
+            {onQuickAdd && (
+              <button onClick={onQuickAdd}
+                className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-[10px] font-semibold hover:bg-emerald-200 whitespace-nowrap">
+                ⚡ Express
+              </button>
+            )}
+            {onGenerateVariants && (
+              <button onClick={onGenerateVariants}
+                className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-[10px] font-semibold hover:bg-purple-200 whitespace-nowrap">
+                🧬 Variantes
+              </button>
+            )}
             <button
               onClick={() => setViewMode('cards')}
               className={`px-2 py-1 rounded text-[10px] font-semibold ${viewMode === 'cards' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}
@@ -116,10 +138,10 @@ export default function InventoryView(props: InventoryViewProps) {
           <div className="relative">
             <input
               type="text"
-              placeholder="nombre / código / QR / proveedor / categoría..."
+              placeholder="nombre / código / modelo / color / ubicación..."
               value={inventorySearch}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="w-44 py-1.5 px-2 pl-7 border border-gray-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-48 py-1.5 px-2 pl-7 border border-gray-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">🔍</span>
           </div>
@@ -131,7 +153,7 @@ export default function InventoryView(props: InventoryViewProps) {
           <p className="text-gray-400 text-sm mb-1">
             {inventorySearch ? 'No se encontraron productos' : 'No hay productos en inventario'}
           </p>
-          <p className="text-gray-400 text-[11px]">Registra producciones para ver el inventario</p>
+          <p className="text-gray-400 text-[11px]">Usa ⚡ Express o 🧬 Variantes para crear productos rápido</p>
         </div>
       ) : viewMode === 'table' ? (
         <div className="overflow-x-auto">
@@ -140,10 +162,10 @@ export default function InventoryView(props: InventoryViewProps) {
               <tr>
                 <th className="py-2 px-2 text-left">Código</th>
                 <th className="py-2 px-2 text-left">Producto</th>
-                <th className="py-2 px-2 text-left">Categoría</th>
-                <th className="py-2 px-2 text-left">Proveedor</th>
-                <th className="py-2 px-2 text-right">Stock</th>
-                <th className="py-2 px-2 text-right">Unidad</th>
+                <th className="py-2 px-2 text-left">Modelo</th>
+                <th className="py-2 px-2 text-left">Color</th>
+                <th className="py-2 px-2 text-left">Stock</th>
+                <th className="py-2 px-2 text-left">Ubicación</th>
                 <th className="py-2 px-2 text-right">Costo</th>
                 <th className="py-2 px-2 text-right">Venta</th>
                 <th className="py-2 px-2 text-center">Margen</th>
@@ -157,12 +179,14 @@ export default function InventoryView(props: InventoryViewProps) {
                   <tr key={index} className={`border-t border-gray-100 border-l-4 ${qtyBorderClass(item.quantity)}`}>
                     <td className="py-1.5 px-2 font-mono text-gray-500">{item.code || '—'}</td>
                     <td className="py-1.5 px-2 font-medium text-gray-800">{item.name}</td>
-                    <td className="py-1.5 px-2 text-left text-gray-500 text-[10px]">{item.categoria || '—'}</td>
-                    <td className="py-1.5 px-2 text-left text-gray-500 text-[10px]">{item.proveedor || '—'}</td>
+                    <td className="py-1.5 px-2 text-gray-500 text-[10px]">{item.modelo || '—'}</td>
+                    <td className="py-1.5 px-2 text-gray-500 text-[10px]">{item.color || '—'}</td>
                     <td className="py-1.5 px-2 text-right font-semibold">
                       <span className={`px-1.5 py-0.5 rounded ${qtyBadgeClass(item.quantity)}`}>{item.quantity}</span>
                     </td>
-                    <td className="py-1.5 px-2 text-right text-gray-500">{item.unit ? getUnitLabel(item.unit) : '—'}</td>
+                    <td className="py-1.5 px-2 text-gray-500 text-[10px]">
+                      {item.ubicacion ? <span className="font-medium">📍{item.ubicacion}{item.subUbicacion ? ` › ${item.subUbicacion}` : ''}</span> : '—'}
+                    </td>
                     <td className="py-1.5 px-2 text-right text-gray-600">{item.cost ? formatCOP(item.cost) + (item.pricingMode === 'WEIGHT' ? '/kg' : '') : '—'}</td>
                     <td className="py-1.5 px-2 text-right text-blue-600 font-semibold">{item.lastPrice ? formatCOP(item.lastPrice) + (item.pricingMode === 'WEIGHT' ? '/kg' : '') : '—'}</td>
                     <td className="py-1.5 px-2 text-center">
@@ -199,14 +223,16 @@ export default function InventoryView(props: InventoryViewProps) {
                         <div className="text-[9px] font-mono text-gray-400 leading-tight">{item.code}</div>
                       )}
                       <div className="text-[11px] font-semibold text-gray-800 truncate leading-tight" title={item.name}>{item.name}</div>
-                      {item.unit && (
-                        <div className="text-[9px] text-gray-400 leading-tight">{getUnitLabel(item.unit)}</div>
+                      {(item.modelo || item.color) && (
+                        <div className="text-[8px] text-gray-400 leading-tight truncate">
+                          {item.modelo && <span>{item.modelo}</span>}
+                          {item.modelo && item.color && <span> · </span>}
+                          {item.color && <span>🎨 {item.color}</span>}
+                        </div>
                       )}
-                      {(item.categoria || item.proveedor) && (
-                        <div className="text-[8px] text-gray-400 leading-tight mt-0.5 truncate">
-                          {item.categoria && <span>{item.categoria}</span>}
-                          {item.categoria && item.proveedor && <span> · </span>}
-                          {item.proveedor && <span>{item.proveedor}</span>}
+                      {item.ubicacion && (
+                        <div className="text-[8px] text-gray-400 leading-tight truncate">
+                          📍 {item.ubicacion}{item.subUbicacion ? ` › ${item.subUbicacion}` : ''}
                         </div>
                       )}
                     </div>

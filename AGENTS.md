@@ -43,12 +43,12 @@ Tables: `businesses`, `products`, `transactions`, `transaction_items`, `transact
 5. Recarga → usuario tiene FREE activo
 
 ## GitHub Issues
-- **Closed (implementados)**: #43-#50, #55, #57-#61, #63-#65, #69, #87-#96, #111-#122, #123-#126
-- **Implementados**: #242 (persistencia Electron + auto-save + backups + tests), #249 (flujo producción unificado), #251 (tandas de producción)
-- **Open**: #250 (ver abajo)
+- **Closed (implementados)**: #43-#50, #55, #57-#61, #63-#65, #69, #87-#96, #111-#122, #123-#126, #250
+- **Implementados**: #242 (persistencia Electron + auto-save + backups + tests), #249 (flujo producción unificado), #251 (tandas de producción), #258 (Inventario Express), #259 (Variantes Automáticas), #260 (Ubicaciones Físicas)
+- **Pendiente cierre**: #250 (RF6 multi-producto implementado, esperando confirmación usuario), #258, #259, #260
 
 ## Issues Abiertos
-- #250 — Módulo Producción Unificado: RF1-RF5 implementados, RF6 multi-producto pendiente, pruebas P1-P11 sin ejecutar
+- (ninguno — todos implementados, pendientes de cierre por confirmación)
 
 ## Common Commands
 ```bash

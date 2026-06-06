@@ -129,6 +129,10 @@ export interface Product {
   unidad?: string
   proveedor?: string
   categoria?: string
+  modelo?: string
+  color?: string
+  ubicacion?: string
+  subUbicacion?: string
   licenseKey?: string
   licenseEmail?: string
   licenseUsed?: boolean
@@ -161,6 +165,73 @@ export async function generateNextProductCode(businessId: number, businessType?:
     }
   }
   return prefix + String(maxNum + 1).padStart(3, '0')
+}
+
+export function generateExpressCode(categoria: string, modelo: string, color: string): string {
+  const cat = categoria.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 3)
+  const mod = modelo.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 4)
+  const col = color.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 3)
+  return `${cat}-${mod}-${col}`
+}
+
+export function generateExpressName(categoria: string, modelo: string, color: string): string {
+  return `${categoria} ${modelo} ${color}`.trim()
+}
+
+export async function quickCreateProduct(
+  businessId: number,
+  categoria: string,
+  modelo: string,
+  color: string,
+  cantidad: number,
+  ubicacion?: string,
+  subUbicacion?: string,
+  price?: number,
+): Promise<number> {
+  const code = generateExpressCode(categoria, modelo, color)
+  const name = generateExpressName(categoria, modelo, color)
+  const existing = await db.products.where('businessId').equals(businessId).filter(p => p.code === code).first()
+  if (existing) {
+    await db.products.update(existing.id!, {
+      stock: (existing.stock || 0) + cantidad,
+      ubicacion: ubicacion || existing.ubicacion,
+      subUbicacion: subUbicacion || existing.subUbicacion,
+    })
+    return existing.id!
+  }
+  return db.products.add({
+    businessId,
+    code,
+    name,
+    price: price || 0,
+    stock: cantidad,
+    categoria,
+    modelo,
+    color,
+    ubicacion,
+    subUbicacion,
+    unidad: 'unidad',
+    pricingMode: 'UNIT',
+    createdAt: new Date(),
+  })
+}
+
+export async function createVariantProducts(
+  businessId: number,
+  categoria: string,
+  modelos: string[],
+  colores: string[],
+  cantidad: number,
+  ubicacion?: string,
+): Promise<number> {
+  let created = 0
+  for (const modelo of modelos) {
+    for (const color of colores) {
+      await quickCreateProduct(businessId, categoria, modelo, color, cantidad, ubicacion)
+      created++
+    }
+  }
+  return created
 }
 
 export interface ServiceOrder {
@@ -693,7 +764,17 @@ export async function searchProducts(query: string): Promise<Product[]> {
   return db.products
     .where('businessId')
     .equals(getCurrentBusinessId())
-    .filter(p => p.name.toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q) || (p.qr || '').toLowerCase().includes(q) || (p.proveedor || '').toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q))
+    .filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      (p.code || '').toLowerCase().includes(q) ||
+      (p.qr || '').toLowerCase().includes(q) ||
+      (p.proveedor || '').toLowerCase().includes(q) ||
+      (p.categoria || '').toLowerCase().includes(q) ||
+      (p.modelo || '').toLowerCase().includes(q) ||
+      (p.color || '').toLowerCase().includes(q) ||
+      (p.ubicacion || '').toLowerCase().includes(q) ||
+      (p.subUbicacion || '').toLowerCase().includes(q)
+    )
     .toArray()
 }
 
@@ -891,6 +972,10 @@ export interface ProductStock {
   name: string
   proveedor?: string
   categoria?: string
+  modelo?: string
+  color?: string
+  ubicacion?: string
+  subUbicacion?: string
   quantity: number
   totalProduced: number
   totalSold: number
@@ -911,9 +996,9 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
   const businessId = getCurrentBusinessId()
   
   const products = await db.products.where('businessId').equals(businessId).toArray()
-  const productIdMap = new Map<string, { id: number; cost?: number; price?: number; unit?: string; code?: string; qr?: string; proveedor?: string; categoria?: string; pricingMode?: string; margin?: number }>()
+  const productIdMap = new Map<string, { id: number; cost?: number; price?: number; unit?: string; code?: string; qr?: string; proveedor?: string; categoria?: string; modelo?: string; color?: string; ubicacion?: string; subUbicacion?: string; pricingMode?: string; margin?: number }>()
   for (const p of products) {
-    productIdMap.set(p.name.toLowerCase(), { id: p.id!, cost: p.cost, price: p.price, unit: p.unidad, code: p.code, qr: p.qr, proveedor: p.proveedor, categoria: p.categoria, pricingMode: p.pricingMode, margin: p.margin })
+    productIdMap.set(p.name.toLowerCase(), { id: p.id!, cost: p.cost, price: p.price, unit: p.unidad, code: p.code, qr: p.qr, proveedor: p.proveedor, categoria: p.categoria, modelo: p.modelo, color: p.color, ubicacion: p.ubicacion, subUbicacion: p.subUbicacion, pricingMode: p.pricingMode, margin: p.margin })
   }
   
   const transactions = await db.transactions
@@ -1040,6 +1125,10 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
       qr: pinfo?.qr,
       proveedor: pinfo?.proveedor,
       categoria: pinfo?.categoria,
+      modelo: pinfo?.modelo,
+      color: pinfo?.color,
+      ubicacion: pinfo?.ubicacion,
+      subUbicacion: pinfo?.subUbicacion,
       name,
       quantity: (data.produced || 0) + (data.purchased || 0) + (data.adjusted || 0) - (data.sold || 0),
       totalProduced: data.produced || 0,
@@ -1067,6 +1156,10 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
         qr: p.qr,
         proveedor: p.proveedor,
         categoria: p.categoria,
+        modelo: p.modelo,
+        color: p.color,
+        ubicacion: p.ubicacion,
+        subUbicacion: p.subUbicacion,
         name: p.name,
         quantity: p.stock || 0,
         totalProduced: 0,

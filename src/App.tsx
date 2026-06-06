@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { getAllTransactions, Transaction, getDailySummary, getWeeklySummary, getMonthlySummary, FinancialSummary, getTransactionMeta, db, getProductStock, getOrCreateDefaultBusiness, createTransaction, saveTransactionMeta, getStockByProduct, saveBusinessConfig, getAllBusinesses, createBusiness, deleteBusiness, updateBusinessType, Business, BusinessType, businessTemplates, getNetProfitSummary, NetProfitSummary, setCurrentBusinessId, Mesa, getMesas, resetAllMesas, setOrderItemStatus, InventoryConfig, getInventoryConfig, saveInventoryConfig, adjustInventory, getInventoryMode, createServiceOrder, updateServiceOrderStatus, getServiceOrders, ServiceOrder, upsertCustomer, sendWhatsAppReceipt, getProducts, Product, getDefaultUnit, generateNextProductCode, deleteProduct, isWeightUnit } from './services/db'
-import { getLicenseState, isFeatureAllowed, activateLicense, checkLicenseStatus, refreshLicenseCheck, getUpgradeMessage, getDeviceId, deactivateLicense, fetchSheetData, saveLicenseState } from './services/license'
+import { getLicenseState, isFeatureAllowed, activateLicense, checkLicenseStatus, refreshLicenseCheck, getUpgradeMessage, getDeviceId, deactivateLicense, fetchSheetData, saveLicenseState, updateLicenseSheet } from './services/license'
 import { isElectron, syncSave, syncSaveKeepalive } from './services/persistence'
 import RestaurantModule from './components/restaurant/RestaurantModule'
 import CocinaView from './components/restaurant/CocinaView'
@@ -38,6 +38,8 @@ import NewBusinessModal from './components/modals/NewBusinessModal'
 import LicenseExpiredModal from './components/modals/LicenseExpiredModal'
 import PostSaleTriggerModal from './components/modals/PostSaleTriggerModal'
 import OnboardingModal from './components/modals/OnboardingModal'
+import ExpressInventoryModal from './components/modals/ExpressInventoryModal'
+import VariantGeneratorModal from './components/modals/VariantGeneratorModal'
 
 type Mode = 'venta' | 'compra' | 'gasto' | 'produccion'
 
@@ -174,6 +176,8 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [customerName, setCustomerName] = useState('')
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [showExpress, setShowExpress] = useState(false)
+  const [showVariants, setShowVariants] = useState(false)
   const [newProductName, setNewProductName] = useState('')
   const [newProductPrice, setNewProductPrice] = useState('')
   const [newProductCost, setNewProductCost] = useState('')
@@ -386,6 +390,11 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message })
     setTimeout(() => setNotification(null), 3000)
+  }
+
+  const reloadInventory = async () => {
+    const data = await getStockByProduct()
+    setInventory(data)
   }
 
   const loadTransactions = async () => {
@@ -1297,6 +1306,8 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             }}
             canPurchase={isFeatureAllowed('compra')}
             canAdjust={isFeatureAllowed('config')}
+            onQuickAdd={() => setShowExpress(true)}
+            onGenerateVariants={() => setShowVariants(true)}
           />
 
           <ProcessExecutionView
@@ -1418,19 +1429,30 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             <PaymentQrModal
               show={showPaymentModal}
               onClose={() => setShowPaymentModal(false)}
-              onCashPayment={() => {
+              onCashPayment={async () => {
+                if (!confirm('¿Solicitar activación PRO?\n\nSe enviarán tus datos al administrador para validar el pago. Recibirás una licencia de prueba por 1 día. ¿Continuar?')) return
+                const deviceId = getDeviceId()
+                const currentBiz = businesses.find(b => b.id === currentBusinessId)
+                const bizName = currentBiz?.name || ''
+                const bizType = currentBiz?.tipo || currentBusinessType
+                const userEmail = licenseEmail || 'efectivo-local'
+                await updateLicenseSheet(userEmail, 'pro', deviceId,
+                  `Solicitud activación local - ${bizName} (${bizType})`,
+                  { negocio: bizName, tipo: bizType, solicitado: new Date().toISOString() }
+                )
+                const expiresAt = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000)
                 saveLicenseState({
-                  email: 'efectivo-local',
+                  email: userEmail,
                   plan: 'pro',
                   isActivated: true,
-                  expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+                  expiresAt: expiresAt.toISOString(),
                   lastChecked: new Date().toISOString(),
                   lastOnlineCheck: new Date().toISOString(),
-                  deviceId: getDeviceId(),
+                  deviceId,
                 })
                 setShowPaymentModal(false)
-                showNotification('success', 'Licencia PRO activada por pago en efectivo')
-                setTimeout(() => window.location.reload(), 1500)
+                showNotification('success', `Licencia PRO de prueba activada hasta ${expiresAt.toLocaleDateString()} — el administrador validará tu pago`)
+                setTimeout(() => window.location.reload(), 2000)
               }}
             />
           )}
@@ -1743,6 +1765,22 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
               onClose={() => setShowPostSaleTrigger(false)}
             />
           )}
+
+          <ExpressInventoryModal
+            show={showExpress}
+            onClose={() => setShowExpress(false)}
+            businessId={currentBusinessId}
+            onComplete={reloadInventory}
+            showNotification={showNotification}
+          />
+
+          <VariantGeneratorModal
+            show={showVariants}
+            onClose={() => setShowVariants(false)}
+            businessId={currentBusinessId}
+            onComplete={reloadInventory}
+            showNotification={showNotification}
+          />
 
         </div>
       </div>

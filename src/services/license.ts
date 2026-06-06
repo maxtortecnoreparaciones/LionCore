@@ -328,6 +328,41 @@ function deactivateLicense(): void {
   saveLicenseState(getDefaultLicense())
 }
 
+async function updateLicenseSheet(email: string, plan: string, deviceId: string, notes: string, extra?: Record<string, string>): Promise<boolean> {
+  const WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbw_placeholder/exec'
+  const startDate = new Date().toISOString().split('T')[0]
+  const endDate = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  const payload: Record<string, string> = {
+    action: 'addLicense',
+    email,
+    plan,
+    deviceId,
+    notes,
+    startDate,
+    endDate,
+    isActive: 'FALSE',
+    ...extra,
+  }
+  try {
+    const response = await fetch(WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) throw new Error('HTTP ' + response.status)
+    return true
+  } catch {
+    try {
+      await fetch(`${WEBHOOK_URL}?action=addLicense&data=${encodeURIComponent(JSON.stringify(payload))}`, {
+        method: 'GET', mode: 'no-cors',
+      })
+      return true
+    } catch {
+      return false
+    }
+  }
+}
+
 function getDeviceDisplayInfo(): { deviceId: string; plan: string; email: string; expiresAt: string | null } {
   const state = getLicenseState()
   return {
@@ -352,6 +387,7 @@ export {
   generateDeviceId,
   getDeviceDisplayInfo,
   fetchSheetData,
+  updateLicenseSheet,
 }
 
 export type { LicenseState, LicenseData }
