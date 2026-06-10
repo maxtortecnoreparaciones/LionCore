@@ -12,6 +12,8 @@ import PaymentQrModal from './components/modals/PaymentQrModal'
 import ReferralsModal from './components/modals/ReferralsModal'
 import InvAdjustModal from './components/modals/InvAdjustModal'
 import TransactionForm from './components/pos/TransactionForm'
+import ModernPOS from './components/pos/ModernPOS'
+import BottomNav from './components/layout/BottomNav'
 import HistoryView from './components/views/HistoryView'
 import SummaryView from './components/views/SummaryView'
 import { ConfigView } from './components/views/ConfigView'
@@ -73,6 +75,7 @@ function App() {
   const currentTpl = businessTemplates[currentBusinessType] || businessTemplates.pos
   
   const [mode, setMode] = useState<Mode>('venta')
+  const [activeTab, setActiveTab] = useState('vender')
   const [producto, setProducto] = useState('')
   const [cantidad, setCantidad] = useState<number>(1)
   const [precio, setPrecio] = useState<string>('')
@@ -175,6 +178,7 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   const [customerPhone, setCustomerPhone] = useState('')
   const [customerName, setCustomerName] = useState('')
   const [showAddProduct, setShowAddProduct] = useState(false)
+  const [saleKey, setSaleKey] = useState(0)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [showExpress, setShowExpress] = useState(false)
   const [showVariants, setShowVariants] = useState(false)
@@ -384,6 +388,10 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
   useEffect(() => {
     loadTodayWow()
   }, [currentBusinessId])
+
+  useEffect(() => {
+    if (showInventory) getStockByProduct().then(setInventory)
+  }, [showInventory])
 
   const total = items.reduce((sum, item) => sum + item.cantidad * item.precio, 0)
 
@@ -625,6 +633,7 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
 
       setItems([])
       setProductionMeta({ pesoEntrada: '', pesoSalida: '', desperdicio: '', tiempo: '', notas: '' })
+      setSaleKey(k => k + 1)
       showNotification('success', 'Transaccion guardada correctamente')
 
       if (mode === 'venta' && !licenseState.isActivated) {
@@ -637,6 +646,7 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
       if (showSummary) {
         await loadSummary(summaryPeriod)
       }
+      getStockByProduct().then(setInventory)
     } catch (error) {
       console.error('Error al guardar:', error)
       showNotification('error', 'Error al guardar la transacción')
@@ -650,6 +660,19 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
       showNotification('error', 'Agrega productos primero')
       return
     }
+    setShowInvoice(true)
+  }
+
+  const handleQuickCheckout = (cartItems: { product: Product; quantity: number }[]) => {
+    const newItems: Item[] = cartItems.map((item, i) => ({
+      id: Date.now() + i,
+      producto: item.product.name,
+      code: item.product.code,
+      unit: item.product.unidad,
+      cantidad: item.quantity,
+      precio: item.product.price,
+    }))
+    setItems(newItems)
     setShowInvoice(true)
   }
 
@@ -1048,6 +1071,7 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
           items={items}
           total={total}
           onClose={() => setShowInvoice(false)}
+          onSave={handleGuardar}
         />
       )}
 
@@ -1097,8 +1121,34 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             )}
           </div>
         </div>
+      ) : mode === 'venta' && !showHistory && !showSummary && !showConfig && !showInventory && !showProduction && !showFruverDashboard && !showCustomers && !showSuppliers && !showServices && !showInventoryHistory && !showCategories && !showProcessConfig && !showProcessExecution && !showResources ? (
+        <div className="min-h-screen bg-gray-100 flex flex-col">
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <ModernPOS
+              key={saleKey}
+              businessId={currentBusinessId}
+              businessType={currentBusinessType}
+              onCheckout={handleQuickCheckout}
+              onShowInventory={() => { setMode('venta'); setShowInventory(true) }}
+              onShowCustomers={() => { setMode('venta'); setShowCustomers(true) }}
+            />
+          </div>
+          <BottomNav
+            activeTab={activeTab}
+            onTabChange={(tab) => {
+              setActiveTab(tab)
+              if (tab === 'vender') { setMode('venta'); setShowHistory(false); setShowSummary(false); setShowConfig(false); setShowInventory(false) }
+              if (tab === 'inventario') { setMode('venta'); setShowInventory(true) }
+              if (tab === 'clientes') { setMode('venta'); setShowCustomers(true) }
+              if (tab === 'reportes') { setMode('venta'); setShowSummary(true); setShowHistory(true) }
+              if (tab === 'mas') { setMode('venta'); setShowConfig(true) }
+            }}
+            businessType={currentBusinessType}
+          />
+        </div>
       ) : (
-        <div className="min-h-screen bg-gray-100 py-6 px-4">
+        <div className="min-h-screen bg-gray-100">
+          <div className="overflow-y-auto px-4 py-6">
           <div className="w-full max-w-7xl mx-auto space-y-4">
           {!licenseState.isActivated && (
             <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 flex items-center justify-between">
@@ -1337,6 +1387,17 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
           )}
 
           {!showHistory && !showSummary && !showConfig && !showInventory && !showProduction && !showFruverDashboard && (
+            mode === 'venta' ? (
+              <div className="flex-1 flex flex-col">
+                <ModernPOS
+                  businessId={currentBusinessId}
+                  businessType={currentBusinessType}
+                  onCheckout={handleQuickCheckout}
+                  onShowInventory={() => setShowInventory(true)}
+                  onShowCustomers={() => setShowCustomers(true)}
+                />
+              </div>
+            ) : (
             <TransactionForm
               mode={mode}
               onModeChange={setMode}
@@ -1371,6 +1432,7 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
               onImprimir={handleImprimir}
               onWhatsApp={handleSendWhatsApp}
             />
+            )
           )}
 
           <HistoryView
@@ -1547,6 +1609,13 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
               </button>
             </div>
           )}
+
+        </div>
+      </div>
+    </div>
+      )}
+
+      {/* === MODALES (siempre disponibles) === */}
 
           <div className="fixed bottom-2 right-2 z-50">
             <button
@@ -1782,9 +1851,32 @@ const [transactions, setTransactions] = useState<TransactionWithMeta[]>([])
             showNotification={showNotification}
           />
 
-        </div>
-      </div>
-      )}
+          {showPostSaleTrigger && (
+            <PostSaleTriggerModal
+              show={showPostSaleTrigger}
+              isActivated={licenseState.isActivated}
+              onActivate={() => { setShowPostSaleTrigger(false); setShowLicenseModal(true) }}
+              onViewSummary={() => setShowPostSaleTrigger(false)}
+              onClose={() => setShowPostSaleTrigger(false)}
+            />
+          )}
+
+          <ExpressInventoryModal
+            show={showExpress}
+            onClose={() => setShowExpress(false)}
+            businessId={currentBusinessId}
+            onComplete={reloadInventory}
+            showNotification={showNotification}
+          />
+
+          <VariantGeneratorModal
+            show={showVariants}
+            onClose={() => setShowVariants(false)}
+            businessId={currentBusinessId}
+            onComplete={reloadInventory}
+            showNotification={showNotification}
+          />
+
     </>
   )
 }

@@ -133,6 +133,7 @@ export interface Product {
   color?: string
   ubicacion?: string
   subUbicacion?: string
+  favorite?: boolean
   licenseKey?: string
   licenseEmail?: string
   licenseUsed?: boolean
@@ -759,23 +760,81 @@ export async function getProducts(): Promise<Product[]> {
   return db.products.where('businessId').equals(getCurrentBusinessId()).toArray()
 }
 
+function fuzzyMatch(text: string, query: string): boolean {
+  const t = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const q = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '')
+  if (t.includes(q)) return true
+  let qi = 0
+  for (let i = 0; i < t.length && qi < q.length; i++) {
+    if (t[i] === q[qi]) qi++
+  }
+  return qi === q.length
+}
+
 export async function searchProducts(query: string): Promise<Product[]> {
-  const q = query.toLowerCase()
+  const q = query.trim()
+  if (!q) return db.products.where('businessId').equals(getCurrentBusinessId()).toArray()
+  const fields: (keyof Product)[] = ['name', 'code', 'qr', 'proveedor', 'categoria', 'modelo', 'color', 'ubicacion', 'subUbicacion']
   return db.products
     .where('businessId')
     .equals(getCurrentBusinessId())
-    .filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      (p.code || '').toLowerCase().includes(q) ||
-      (p.qr || '').toLowerCase().includes(q) ||
-      (p.proveedor || '').toLowerCase().includes(q) ||
-      (p.categoria || '').toLowerCase().includes(q) ||
-      (p.modelo || '').toLowerCase().includes(q) ||
-      (p.color || '').toLowerCase().includes(q) ||
-      (p.ubicacion || '').toLowerCase().includes(q) ||
-      (p.subUbicacion || '').toLowerCase().includes(q)
-    )
+    .filter(p => fields.some(f => fuzzyMatch(String(p[f] || ''), q)))
     .toArray()
+}
+
+export async function getFavoriteProducts(): Promise<Product[]> {
+  return db.products
+    .where('businessId')
+    .equals(getCurrentBusinessId())
+    .filter(p => p.favorite === true)
+    .toArray()
+}
+
+export async function toggleFavorite(productId: number): Promise<boolean> {
+  const p = await db.products.get(productId)
+  if (!p) return false
+  const newVal = !p.favorite
+  await db.products.update(productId, { favorite: newVal })
+  return newVal
+}
+
+export async function getMostSoldProducts(limit = 20): Promise<{ product: Product; count: number }[]> {
+  const businessId = getCurrentBusinessId()
+  const products = await db.products.where('businessId').equals(businessId).toArray()
+  const productMap = new Map(products.map(p => [p.name.toLowerCase(), p]))
+  const transactions = await db.transactions.where('businessId').equals(businessId).filter(t => t.type === 'venta').toArray()
+  const counts = new Map<string, number>()
+  for (const tx of transactions) {
+    const items = await db.transaction_items.where('transactionId').equals(tx.id!).toArray()
+    for (const item of items) {
+      counts.set(item.name.toLowerCase(), (counts.get(item.name.toLowerCase()) || 0) + item.quantity)
+    }
+  }
+  return Array.from(counts.entries())
+    .map(([name, count]) => ({ product: productMap.get(name), count }))
+    .filter((x): x is { product: Product; count: number } => x.product !== undefined)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, limit)
+}
+
+export async function getRecentProducts(limit = 20): Promise<Product[]> {
+  const businessId = getCurrentBusinessId()
+  const transactions = await db.transactions.where('businessId').equals(businessId).filter(t => t.type === 'venta').reverse().sortBy('date')
+  const seen = new Set<string>()
+  const result: Product[] = []
+  for (const tx of transactions) {
+    const items = await db.transaction_items.where('transactionId').equals(tx.id!).toArray()
+    for (const item of items) {
+      if (seen.has(item.name.toLowerCase())) continue
+      seen.add(item.name.toLowerCase())
+      const p = await db.products.where('businessId').equals(businessId).filter(p => p.name.toLowerCase() === item.name.toLowerCase()).first()
+      if (p) {
+        result.push(p)
+        if (result.length >= limit) return result
+      }
+    }
+  }
+  return result
 }
 
 export async function deleteProduct(productName: string): Promise<void> {
@@ -976,6 +1035,7 @@ export interface ProductStock {
   color?: string
   ubicacion?: string
   subUbicacion?: string
+  favorite?: boolean
   quantity: number
   totalProduced: number
   totalSold: number
@@ -996,9 +1056,9 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
   const businessId = getCurrentBusinessId()
   
   const products = await db.products.where('businessId').equals(businessId).toArray()
-  const productIdMap = new Map<string, { id: number; cost?: number; price?: number; unit?: string; code?: string; qr?: string; proveedor?: string; categoria?: string; modelo?: string; color?: string; ubicacion?: string; subUbicacion?: string; pricingMode?: string; margin?: number }>()
+  const productIdMap = new Map<string, { id: number; cost?: number; price?: number; unit?: string; code?: string; qr?: string; proveedor?: string; categoria?: string; modelo?: string; color?: string; ubicacion?: string; subUbicacion?: string; pricingMode?: string; margin?: number; favorite?: boolean }>()
   for (const p of products) {
-    productIdMap.set(p.name.toLowerCase(), { id: p.id!, cost: p.cost, price: p.price, unit: p.unidad, code: p.code, qr: p.qr, proveedor: p.proveedor, categoria: p.categoria, modelo: p.modelo, color: p.color, ubicacion: p.ubicacion, subUbicacion: p.subUbicacion, pricingMode: p.pricingMode, margin: p.margin })
+    productIdMap.set(p.name.toLowerCase(), { id: p.id!, cost: p.cost, price: p.price, unit: p.unidad, code: p.code, qr: p.qr, proveedor: p.proveedor, categoria: p.categoria, modelo: p.modelo, color: p.color, ubicacion: p.ubicacion, subUbicacion: p.subUbicacion, pricingMode: p.pricingMode, margin: p.margin, favorite: p.favorite })
   }
   
   const transactions = await db.transactions
@@ -1129,6 +1189,7 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
       color: pinfo?.color,
       ubicacion: pinfo?.ubicacion,
       subUbicacion: pinfo?.subUbicacion,
+      favorite: pinfo?.favorite,
       name,
       quantity: (data.produced || 0) + (data.purchased || 0) + (data.adjusted || 0) - (data.sold || 0),
       totalProduced: data.produced || 0,
@@ -1160,6 +1221,7 @@ export async function getStockByProduct(): Promise<ProductStock[]> {
         color: p.color,
         ubicacion: p.ubicacion,
         subUbicacion: p.subUbicacion,
+        favorite: p.favorite,
         name: p.name,
         quantity: p.stock || 0,
         totalProduced: 0,

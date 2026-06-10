@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { formatCOP } from '../../utils/format'
+import { toggleFavorite } from '../../services/db'
 
 interface InventoryItem {
   id?: number
@@ -12,6 +13,7 @@ interface InventoryItem {
   color?: string
   ubicacion?: string
   subUbicacion?: string
+  favorite?: boolean
   quantity: number
   totalProduced: number
   totalSold: number
@@ -237,6 +239,10 @@ export default function InventoryView(props: InventoryViewProps) {
                       )}
                     </div>
                     <div className="flex items-center gap-0.5 shrink-0">
+                      {item.id && (
+                        <button onClick={async (e) => { e.stopPropagation(); await toggleFavorite(item.id!); /* reload handled by caller */ }}
+                          className="text-[11px] hover:scale-110 transition-transform">{item.favorite ? '⭐' : '☆'}</button>
+                      )}
                       {(() => { const icon = profitIcon(margin); return icon ? <span className="text-[10px]">{icon}</span> : null })()}
                       {invConfig.lowStockAlert && item.quantity <= invConfig.lowStockThreshold && item.quantity > 0 && (
                         <span className="text-[10px]" title="Stock bajo">⚠️</span>

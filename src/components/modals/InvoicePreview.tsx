@@ -16,9 +16,10 @@ interface InvoicePreviewProps {
   items: Item[]
   total: number
   onClose: () => void
+  onSave?: () => void
 }
 
-export default function InvoicePreview({ mode, items, total, onClose }: InvoicePreviewProps) {
+export default function InvoicePreview({ mode, items, total, onClose, onSave }: InvoicePreviewProps) {
   const fecha = new Date().toLocaleString('es-CO')
   const numFactura = Math.floor(Math.random() * 900000) + 100000
 
@@ -77,14 +78,22 @@ export default function InvoicePreview({ mode, items, total, onClose }: InvoiceP
             onClick={onClose}
             className="flex-1 py-3 px-4 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors"
           >
-            Cerrar
+            ✕ Cerrar
           </button>
           <button
             onClick={() => window.print()}
-            className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+            className="flex-1 py-3 px-4 bg-gray-600 text-white rounded-lg font-semibold hover:bg-gray-700 transition-colors"
           >
-            Imprimir
+            🖨️ Imprimir
           </button>
+          {onSave && (
+            <button
+              onClick={() => { onSave(); onClose() }}
+              className="flex-1 py-3 px-4 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors shadow-lg shadow-green-600/30"
+            >
+              💰 Pagar
+            </button>
+          )}
         </div>
       </div>
     </div>
